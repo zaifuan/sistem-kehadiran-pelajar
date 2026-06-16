@@ -1,0 +1,22 @@
+{
+  "name": "sistem-pantau-kehadiran",
+  "version": "0.1.0",
+  "description": "Sistem Pantau Kehadiran Pelajar — migrasi dari Google Apps Script ke server sendiri (Node + Express + PostgreSQL). Google Sheet kekal master database pada fasa awal.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "morgan": "^1.10.0",
+    "pg": "^8.13.1"
+  }
+}

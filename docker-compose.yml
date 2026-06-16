@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: kehadiran-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    # Dibuka pada localhost server sahaja (untuk pgAdmin/psql). Tidak terdedah ke internet.
+    # ports:
+    #   - "127.0.0.1:${DB_PORT_HOST:-5432}:5432"
+    volumes:
+      - kehadiran_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    container_name: kehadiran-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      APP_PORT: ${APP_PORT:-3000}
+      # Sambungan dalaman ke servis db (bukan localhost)
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-true}
+      TIMEZONE: ${TIMEZONE:-Asia/Kuala_Lumpur}
+      # Rujukan sahaja pada Fasa 1 (digunakan Fasa 2+)
+      SHEET_PERATUS_ID: ${SHEET_PERATUS_ID:-}
+      SHEET_SENARAI_ID: ${SHEET_SENARAI_ID:-}
+      GOOGLE_SERVICE_ACCOUNT_KEY: ${GOOGLE_SERVICE_ACCOUNT_KEY:-./secrets/service-account.json}
+    ports:
+      - "3010:3000"
+    volumes:
+      # Fail kunci service account (Fasa 2) — read-only
+      - ./secrets:/app/secrets:ro
+
+volumes:
+  kehadiran_pgdata:
