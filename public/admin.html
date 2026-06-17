@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a5447" />
+  <title>Dashboard Admin — Pantau Kehadiran</title>
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="ttl">
+        <p class="eyebrow">SABK Maahad Al-Khair Lil Banat</p>
+        <h1>Dashboard Admin</h1>
+      </div>
+      <button id="btn-refresh" class="iconbtn" type="button" aria-label="Muat semula">
+        <span class="refresh-ico" aria-hidden="true">↻</span>
+      </button>
+    </div>
+    <p id="tarikh-strip" class="tarikh-strip num">Memuatkan…</p>
+  </header>
+
+  <nav class="seg" role="tablist" aria-label="Paparan">
+    <button class="seg-btn is-active" type="button" data-tab="harian" role="tab">Hari Ini</button>
+    <button class="seg-btn" type="button" data-tab="rekod" role="tab">Rekod Lepas</button>
+  </nav>
+
+  <main>
+    <!-- TAB 1: HARI INI -->
+    <section id="tab-harian" class="tab is-active" aria-label="Ringkasan hari ini">
+      <!-- Hero peratus + progres isi kelas -->
+      <div id="hero" class="hero">
+        <div class="loading"><div class="spinner"></div>Memuatkan ringkasan…</div>
+      </div>
+
+      <!-- Kad statistik -->
+      <div id="stat-grid" class="stat-grid" hidden></div>
+
+      <!-- Senarai Belum Isi -->
+      <div class="block">
+        <div class="block-head">
+          <h2>Belum Isi <span id="belum-kira" class="pill warn" hidden>0</span></h2>
+        </div>
+        <div id="belum-body" class="list"></div>
+      </div>
+    </section>
+
+    <!-- TAB 2: REKOD LEPAS -->
+    <section id="tab-rekod" class="tab" aria-label="Rekod lepas" hidden>
+      <div class="filter-card">
+        <div class="field">
+          <label for="f-tarikh">Tarikh</label>
+          <input id="f-tarikh" type="date" class="inp num" />
+        </div>
+        <div class="field">
+          <label for="f-kelas">Kelas</label>
+          <select id="f-kelas" class="inp">
+            <option value="">Semua kelas</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="rekod-ringkasan" class="rekod-ringkasan" hidden></div>
+      <div id="rekod-body" class="list">
+        <p class="hint">Pilih tarikh untuk melihat rekod kehadiran.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
