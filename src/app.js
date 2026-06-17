@@ -4,6 +4,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { healthRouter } from './routes/health.js';
 import { syncRouter } from './routes/sync.js';
+import { auditRouter } from './routes/audit.js';
 
 export function buatApp() {
   const app = express();
@@ -22,6 +23,7 @@ export function buatApp() {
 
   app.use('/api', healthRouter);
   app.use('/api/sync', syncRouter);
+  app.use('/api/audit', auditRouter);
 
   // 404
   app.use((req, res) => res.status(404).json({ ralat: 'Tidak dijumpai' }));

@@ -13,7 +13,7 @@ Migrasi sistem kehadiran **SABK MAAHAD AL-KHAIR LIL BANAT** daripada Google Apps
 | 0 | ✅ Siap | Audit sistem asal — lihat [`docs/FASA-0-AUDIT-SISTEM-KEHADIRAN.md`](docs/FASA-0-AUDIT-SISTEM-KEHADIRAN.md) |
 | **1** | ✅ **Skeleton ini** | Repo + Docker + Express + PostgreSQL + skema + health check |
 | **2** | ✅ **Siap** | Sync Google Sheet **read-only** ke DB (endpoint manual) |
-| 3 | ⬜ | Import data lama + modul **audit** (validate kiraan, tanpa overwrite) |
+| **3** | ✅ **Siap** | Modul **audit** validate import (endpoint, tanpa overwrite) |
 | 4 | ⬜ | Page guru (mobile) |
 | 5 | ⬜ | Admin biasa — `ADMIN` (SU Kehadiran), login username/password |
 | 6 | ⬜ | Ketua admin — `SUPER_ADMIN` (SU HEM) |
@@ -134,6 +134,20 @@ sistem-kehadiran/
    ├─ services/           # (Fasa 2+: sync Sheet, dll.)
    └─ middleware/          # (Fasa 5+: auth, dll.)
 ```
+
+---
+
+## Fasa 3 — Audit & Validasi Import (READ-ONLY)
+
+Audit data yang telah disync ke PostgreSQL. **Tiada data lama diubah** — hanya papar beza & isu.
+
+| Method | Path | Fungsi |
+|---|---|---|
+| GET | `/api/audit/import-summary` | Kiraan: kelas, pelajar, kehadiran, raw rows, status sync |
+| GET | `/api/audit/attendance-compare` | Validasi formula (peratus = HADIR/JUMLAH×100; wakil dikira HADIR); papar rekod yang ada beza sahaja |
+| GET | `/api/audit/warnings` | Konflik guru Sheet#1/#2, tarikh gagal normalize, kelas tiada metadata, pelajar duplicate, attendance duplicate (sumber) |
+
+`attendance-compare` membanding *snapshot* Sheet (tersimpan) dengan kiraan semula server — **tanpa menulis**. `warnings` membaca semula `DATA_KEHADIRAN` (read-only) untuk kesan duplicate sumber; dilangkau dengan anggun jika Sheet tak dapat diakses. Tiada perubahan skema diperlukan untuk Fasa 3.
 
 ---
 
