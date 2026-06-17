@@ -10,6 +10,7 @@ import { auditRouter } from './routes/audit.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { guruRouter } from './routes/guru.js';
 import { adminRouter } from './routes/admin.js';
+import { analyticsRouter } from './routes/analytics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,12 +40,14 @@ export function buatApp() {
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/guru', guruRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/analytics', analyticsRouter);
 
   // Frontend statik — Dashboard (read-only) + Portal Guru (isi kehadiran)
   app.use(express.static(path.join(__dirname, '..', 'public')));
   app.get('/dashboard', (req, res) => res.redirect('/'));
   app.get('/guru', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'guru.html')));
   app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'admin.html')));
+  app.get('/analytics', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'analytics.html')));
 
   // 404
   app.use((req, res) => res.status(404).json({ ralat: 'Tidak dijumpai' }));

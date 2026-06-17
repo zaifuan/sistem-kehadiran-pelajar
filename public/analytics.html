@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a5447" />
+  <title>Analisis Kehadiran — Peratus</title>
+  <link rel="stylesheet" href="/analytics.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="ttl">
+        <p class="eyebrow">SABK Maahad Al-Khair Lil Banat</p>
+        <h1>Analisis Kehadiran</h1>
+      </div>
+      <button id="btn-refresh" class="iconbtn" type="button" aria-label="Muat semula">
+        <span class="refresh-ico" aria-hidden="true">↻</span>
+      </button>
+    </div>
+    <p class="tarikh-strip">Peratus harian · mingguan · bulanan</p>
+  </header>
+
+  <nav class="seg" role="tablist" aria-label="Paparan analisis">
+    <button class="seg-btn is-active" type="button" data-tab="harian" role="tab">Harian</button>
+    <button class="seg-btn" type="button" data-tab="mingguan" role="tab">Mingguan</button>
+    <button class="seg-btn" type="button" data-tab="bulanan" role="tab">Bulanan</button>
+    <button class="seg-btn" type="button" data-tab="kelas" role="tab">Kelas</button>
+    <button class="seg-btn" type="button" data-tab="pelajar" role="tab">Pelajar</button>
+  </nav>
+
+  <main>
+    <!-- ───────── HARIAN ───────── -->
+    <section id="tab-harian" class="tab is-active" aria-label="Analisis harian">
+      <div class="filter-card">
+        <div class="field">
+          <label for="h-tarikh">Tarikh</label>
+          <input id="h-tarikh" type="date" class="inp num" />
+        </div>
+        <div class="field">
+          <label for="h-bulan">Bulan</label>
+          <input id="h-bulan" type="month" class="inp num" />
+        </div>
+        <div class="field span2">
+          <label for="h-kelas">Kelas</label>
+          <select id="h-kelas" class="inp"><option value="">Semua kelas</option></select>
+        </div>
+      </div>
+      <div id="h-ringkasan" class="ringkasan" hidden></div>
+      <div id="h-body"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+    </section>
+
+    <!-- ───────── MINGGUAN ───────── -->
+    <section id="tab-mingguan" class="tab" aria-label="Analisis mingguan" hidden>
+      <p class="formula">Formula: Σ Hadir Minggu ÷ Σ Jumlah Minggu × 100 (Isnin–Jumaat)</p>
+      <div class="filter-card">
+        <div class="field span2">
+          <label for="w-kelas">Skop</label>
+          <select id="w-kelas" class="inp"><option value="">Sekolah (semua kelas)</option></select>
+        </div>
+      </div>
+      <div id="w-chart" class="chart-card"></div>
+      <div id="w-body"></div>
+    </section>
+
+    <!-- ───────── BULANAN ───────── -->
+    <section id="tab-bulanan" class="tab" aria-label="Analisis bulanan" hidden>
+      <p class="formula">Formula: Σ Hadir Bulan ÷ Σ Jumlah Bulan × 100</p>
+      <div class="filter-card">
+        <div class="field span2">
+          <label for="m-kelas">Skop</label>
+          <select id="m-kelas" class="inp"><option value="">Sekolah (semua kelas)</option></select>
+        </div>
+      </div>
+      <div id="m-chart" class="chart-card"></div>
+      <div id="m-body"></div>
+    </section>
+
+    <!-- ───────── KELAS ───────── -->
+    <section id="tab-kelas" class="tab" aria-label="Paparan kelas" hidden>
+      <div class="filter-card">
+        <div class="field span2">
+          <label for="c-kelas">Pilih kelas</label>
+          <select id="c-kelas" class="inp"><option value="">— Pilih kelas —</option></select>
+        </div>
+      </div>
+      <div id="c-body"><p class="hint">Pilih kelas untuk melihat peratus harian, mingguan, bulanan & trend.</p></div>
+    </section>
+
+    <!-- ───────── PELAJAR ───────── -->
+    <section id="tab-pelajar" class="tab" aria-label="Paparan pelajar" hidden>
+      <div class="filter-card">
+        <div class="field">
+          <label for="s-kelas">Kelas</label>
+          <select id="s-kelas" class="inp"><option value="">— Pilih —</option></select>
+        </div>
+        <div class="field">
+          <label for="s-bulan">Bulan (pilihan)</label>
+          <input id="s-bulan" type="month" class="inp num" />
+        </div>
+        <div class="field span2">
+          <label for="s-pelajar">Pelajar</label>
+          <select id="s-pelajar" class="inp" disabled><option value="">— Pilih kelas dahulu —</option></select>
+        </div>
+      </div>
+      <div id="s-body"><p class="hint">Pilih kelas, kemudian pilih pelajar.</p></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/analytics.js"></script>
+</body>
+</html>
