@@ -36,10 +36,10 @@ services:
       DB_NAME: ${DB_NAME}
       RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-true}
       TIMEZONE: ${TIMEZONE:-Asia/Kuala_Lumpur}
-      # Rujukan sahaja pada Fasa 1 (digunakan Fasa 2+)
-      SHEET_PERATUS_ID: ${SHEET_PERATUS_ID:-}
-      SHEET_SENARAI_ID: ${SHEET_SENARAI_ID:-}
-      GOOGLE_SERVICE_ACCOUNT_KEY: ${GOOGLE_SERVICE_ACCOUNT_KEY:-./secrets/service-account.json}
+      # Google Sheets (Fasa 2) — READ-ONLY
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-secrets/service-account.json}
+      SHEET_MASTER_PELAJAR_ID: ${SHEET_MASTER_PELAJAR_ID:-}
+      SHEET_KEHADIRAN_ID: ${SHEET_KEHADIRAN_ID:-}
     ports:
       - "3010:3000"
     volumes:

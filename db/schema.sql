@@ -124,6 +124,29 @@ CREATE TABLE IF NOT EXISTS telegram_logs (
   dihantar_pada  TIMESTAMPTZ DEFAULT now()
 );
 
+-- ════════════════════════════════════════════════════════════
+--  FASA 2 — tambahan untuk Sync Engine read-only (additif)
+-- ════════════════════════════════════════════════════════════
+
+-- Simpanan RAW untuk tab yang struktur kolum tidak stabil
+-- (PERATUS HARIANMINGGUAN, LAPORAN_BULANAN, LOG_AKTIVITI, dll.)
+-- + fallback untuk baris yang gagal dipetakan.
+CREATE TABLE IF NOT EXISTS sheet_raw (
+  id          SERIAL PRIMARY KEY,
+  sheet_id    TEXT NOT NULL,          -- ID spreadsheet
+  sheet_label TEXT,                   -- 'SHEET1' / 'SHEET2'
+  tab_name    TEXT NOT NULL,          -- cth 'PERATUS HARIANMINGGUAN'
+  row_index   INTEGER NOT NULL,       -- indeks baris (0-based) dalam tab
+  row_json    JSONB NOT NULL,         -- array nilai sel (mentah)
+  disync_pada TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (sheet_id, tab_name, row_index)
+);
+CREATE INDEX IF NOT EXISTS idx_sheet_raw_tab ON sheet_raw (sheet_id, tab_name);
+
+-- Simpan nilai tarikh & masa MENTAH dari Sheet (K2: import as-is)
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS tarikh_raw TEXT;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS masa_raw   TEXT;
+
 -- ── Seed peranan tetap (K1) ──
 INSERT INTO roles (kod, nama) VALUES
   ('ADMIN', 'SU Kehadiran'),

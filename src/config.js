@@ -1,3 +1,4 @@
+import path from 'node:path';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -13,11 +14,15 @@ export const config = {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'kehadiran',
   },
-  // Rujukan sahaja pada Fasa 1; digunakan Fasa 2+
+  // Google Sheets (Fasa 2) — READ-ONLY
+  google: {
+    credentialsPath: path.resolve(
+      process.cwd(),
+      process.env.GOOGLE_APPLICATION_CREDENTIALS || 'secrets/service-account.json'
+    ),
+  },
   sheets: {
-    peratusId: process.env.SHEET_PERATUS_ID || '',
-    senaraiId: process.env.SHEET_SENARAI_ID || '',
-    serviceAccountKey:
-      process.env.GOOGLE_SERVICE_ACCOUNT_KEY || './secrets/service-account.json',
+    masterPelajarId: process.env.SHEET_MASTER_PELAJAR_ID || '', // Sheet #1 (rujukan guru/pembantu)
+    kehadiranId: process.env.SHEET_KEHADIRAN_ID || '', // Sheet #2 (master kehadiran/peratus)
   },
 };

@@ -12,7 +12,7 @@ Migrasi sistem kehadiran **SABK MAAHAD AL-KHAIR LIL BANAT** daripada Google Apps
 |---|---|---|
 | 0 | ✅ Siap | Audit sistem asal — lihat [`docs/FASA-0-AUDIT-SISTEM-KEHADIRAN.md`](docs/FASA-0-AUDIT-SISTEM-KEHADIRAN.md) |
 | **1** | ✅ **Skeleton ini** | Repo + Docker + Express + PostgreSQL + skema + health check |
-| 2 | ⬜ | Sync Google Sheet **read-only** ke DB |
+| **2** | ✅ **Siap** | Sync Google Sheet **read-only** ke DB (endpoint manual) |
 | 3 | ⬜ | Import data lama + modul **audit** (validate kiraan, tanpa overwrite) |
 | 4 | ⬜ | Page guru (mobile) |
 | 5 | ⬜ | Admin biasa — `ADMIN` (SU Kehadiran), login username/password |
@@ -78,7 +78,38 @@ npm start
 
 ---
 
-## Struktur Repo
+## Fasa 2 — Sync Google Sheet (READ-ONLY)
+
+Enjin sync menyalin data dari Google Sheet ke PostgreSQL (cache). **Tiada tulisan ke Sheet.** Scope OAuth = `spreadsheets.readonly`.
+
+**Persediaan service account:**
+1. Google Cloud → cipta service account, dayakan **Google Sheets API**, muat turun fail kunci JSON.
+2. Letak fail sebagai `secrets/service-account.json` (sudah gitignored).
+3. **Share kedua-dua Google Sheet** kepada email service account — **Viewer sahaja**.
+4. Pastikan `.env` ada: `GOOGLE_APPLICATION_CREDENTIALS`, `SHEET_MASTER_PELAJAR_ID`, `SHEET_KEHADIRAN_ID`.
+
+**Endpoint (tanpa auth — Fasa 2 sahaja):**
+
+| Method | Path | Fungsi |
+|---|---|---|
+| POST | `/api/sync/google-sheets` | Cetus sync read-only; pulang ringkasan setiap langkah |
+| GET | `/api/sync/status` | Ringkasan sync terakhir + 25 log terkini + kiraan baris |
+
+**Pemetaan tab → jadual:**
+
+| Sumber | Tab | Sasaran |
+|---|---|---|
+| Sheet #2 | `METADATA_KELAS` | `classes` |
+| Sheet #2 | `SENARAI_PELAJAR` | `students` |
+| Sheet #2 | `DATA_KEHADIRAN` | `attendance_records` (+ absentees + representatives) |
+| Sheet #2 | `TETAPAN` | `settings` (PIN = rujukan legacy) |
+| Sheet #2 | `PERATUS HARIANMINGGUAN`, `LAPORAN_BULANAN`, `LOG_AKTIVITI` | `sheet_raw` (mentah — struktur tak stabil) |
+| Sheet #1 | direktori (SINGKATAN/GURU/PEMBANTU) | `classes.pembantu_kelas` (+ warning jika guru konflik, **tidak ditimpa**) |
+| Sheet #1 | tab lain | `sheet_raw` |
+
+Sifat penting: **idempotent** (kunci `tarikh`+`kelas` untuk kehadiran), nilai lama **disalin apa adanya** (tiada recalculate), tab hilang → **warning** dalam `sync_logs` (tidak crash), tarikh pelik → simpan raw + warning.
+
+
 
 ```
 sistem-kehadiran/
