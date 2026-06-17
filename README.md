@@ -15,7 +15,7 @@ Migrasi sistem kehadiran **SABK MAAHAD AL-KHAIR LIL BANAT** daripada Google Apps
 | **2** | ✅ **Siap** | Sync Google Sheet **read-only** ke DB (endpoint manual) |
 | **3** | ✅ **Siap** | Modul **audit** validate import (endpoint, tanpa overwrite) |
 | **4** | ✅ **Siap** | Dashboard UI read-only, mobile-first (vanilla) |
-| 5 | ⬜ | Admin biasa — `ADMIN` (SU Kehadiran), login username/password |
+| **5** | ✅ **Siap** | Portal Guru Kelas — isi kehadiran harian (tulis ke DB, tanpa login) |
 | 6 | ⬜ | Ketua admin — `SUPER_ADMIN` (SU HEM) |
 | 7 | ⬜ | Write-back ke Google Sheet (sync dua hala) |
 | 8 | ⬜ | Telegram (token **baru** dalam `.env`) |
@@ -166,6 +166,23 @@ Buka di pelayar: `http://<ip-server>:3010/`
 | GET | `/api/dashboard/recent-attendance?limit=50` | Rekod kehadiran terkini (agregat) |
 
 4 tab: **Utama** (statistik + peratus keseluruhan), **Kelas** (senarai), **Kehadiran** (rekod terkini), **Audit** (status dari endpoint Fasa 3). Peratus diwarna ikut ambang: ≥95% hijau, ≥85% amber, <85% merah.
+
+---
+
+## Fasa 5 — Portal Guru Kelas (isi kehadiran)
+
+Portal untuk guru/pembantu isi kehadiran harian. **Tulis ke PostgreSQL sahaja** (tiada write-back ke Google Sheet). Tiada login (seperti sistem GAS). Aliran ikut GAS: **Pilih Kelas → Senarai Pelajar → Pilih Sebab/Wakil → Pengesahan → Simpan**.
+
+Buka di pelayar: `http://<ip-server>:3010/guru`
+
+| Method | Path | Fungsi |
+|---|---|---|
+| GET | `/guru` | Portal guru (HTML) |
+| GET | `/api/guru/classes` | Senarai kelas + bil pelajar aktif |
+| GET | `/api/guru/classes/:kod/pelajar` | Senarai pelajar aktif bagi kelas |
+| POST | `/api/guru/kehadiran` | Simpan kehadiran (upsert tarikh+kelas) |
+
+**Formula** (sama GAS): wakil sekolah **dikira hadir**; tidak hadir sebenar = bukan wakil; `hadir = jumlah − tidak_hadir`; `peratus = hadir/jumlah*100`. Rekod ditandai `sumber='server'`. Jika tarikh+kelas sudah wujud → **update**, bukan duplicate. Senarai tidak hadir disimpan dalam `attendance_absentees` (nama+sebab), wakil dalam `attendance_representatives` — serasi format Fasa 2. Sebab ketidakhadiran = 12 kategori sama seperti GAS. Tarikh = hari ini (zon Asia/Kuala_Lumpur, ditetapkan server).
 
 ---
 

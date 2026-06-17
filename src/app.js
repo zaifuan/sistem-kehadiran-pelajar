@@ -8,6 +8,7 @@ import { healthRouter } from './routes/health.js';
 import { syncRouter } from './routes/sync.js';
 import { auditRouter } from './routes/audit.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { guruRouter } from './routes/guru.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,10 +36,12 @@ export function buatApp() {
   app.use('/api/sync', syncRouter);
   app.use('/api/audit', auditRouter);
   app.use('/api/dashboard', dashboardRouter);
+  app.use('/api/guru', guruRouter);
 
-  // Frontend statik — Dashboard mobile-first (read-only)
+  // Frontend statik — Dashboard (read-only) + Portal Guru (isi kehadiran)
   app.use(express.static(path.join(__dirname, '..', 'public')));
   app.get('/dashboard', (req, res) => res.redirect('/'));
+  app.get('/guru', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'guru.html')));
 
   // 404
   app.use((req, res) => res.status(404).json({ ralat: 'Tidak dijumpai' }));

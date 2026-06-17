@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a5447" />
+  <title>Isi Kehadiran — Guru Kelas</title>
+  <link rel="stylesheet" href="/guru.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <button id="btn-back" class="iconbtn" type="button" aria-label="Kembali" hidden>←</button>
+      <div class="ttl">
+        <p class="eyebrow">SABK Maahad Al-Khair Lil Banat</p>
+        <h1 id="topbar-title">Isi Kehadiran</h1>
+      </div>
+      <span class="tarikh num" id="tarikh-hari-ini"></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Skrin 1: Pilih kelas -->
+    <section id="screen-kelas" class="screen is-active" aria-label="Pilih kelas">
+      <p class="hint">Pilih kelas untuk isi kehadiran hari ini.</p>
+      <div id="grid-kelas" class="grid-kelas"><div class="loading"><div class="spinner"></div>Memuatkan kelas…</div></div>
+    </section>
+
+    <!-- Skrin 2: Isi kehadiran -->
+    <section id="screen-isi" class="screen" aria-label="Isi kehadiran" hidden>
+      <div class="kelas-head">
+        <h2 id="isi-nama-kelas">—</h2>
+        <p id="isi-guru" class="guru">—</p>
+      </div>
+      <input id="cari-pelajar" class="cari" type="search" placeholder="🔍 Cari nama pelajar…" autocomplete="off" />
+      <div id="senarai-pelajar" class="senarai"></div>
+    </section>
+
+    <!-- Skrin 3: Sahkan -->
+    <section id="screen-sahkan" class="screen" aria-label="Sahkan kehadiran" hidden>
+      <h2 class="sah-ttl">Sahkan Kehadiran</h2>
+      <div id="sah-ringkasan" class="sah-ringkasan"></div>
+      <div id="sah-senarai"></div>
+      <div class="sah-btns">
+        <button id="btn-sahkan" class="btn btn-primary" type="button">Sahkan &amp; Simpan</button>
+        <button id="btn-batal-sah" class="btn btn-ghost" type="button">Batal</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Ringkasan sticky (semasa skrin isi) -->
+  <div id="bar-ringkasan" class="bar-ringkasan" hidden>
+    <div class="ring-stats">
+      <div><b id="r-jumlah" class="num">0</b><span>Jumlah</span></div>
+      <div><b id="r-hadir" class="num">0</b><span>Hadir</span></div>
+      <div class="th"><b id="r-th" class="num">0</b><span>T/Hadir</span></div>
+      <div class="wk"><b id="r-wakil" class="num">0</b><span>Wakil</span></div>
+    </div>
+    <div class="ring-btns">
+      <button id="btn-reset" class="btn btn-ghost sm" type="button">Set Semula</button>
+      <button id="btn-simpan" class="btn btn-primary sm" type="button">Kemaskini / Simpan</button>
+    </div>
+  </div>
+
+  <!-- Modal sebab ketidakhadiran -->
+  <div id="modal-sebab" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <button id="sebab-back" class="iconbtn" type="button" aria-label="Kembali" hidden>←</button>
+        <h3 id="sebab-title">Pilih Sebab</h3>
+        <button id="sebab-close" class="iconbtn" type="button" aria-label="Tutup">✕</button>
+      </div>
+      <p id="sebab-nama" class="sebab-nama"></p>
+      <div id="sebab-list" class="sebab-list"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/guru.js"></script>
+</body>
+</html>
