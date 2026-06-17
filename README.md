@@ -14,7 +14,7 @@ Migrasi sistem kehadiran **SABK MAAHAD AL-KHAIR LIL BANAT** daripada Google Apps
 | **1** | ✅ **Skeleton ini** | Repo + Docker + Express + PostgreSQL + skema + health check |
 | **2** | ✅ **Siap** | Sync Google Sheet **read-only** ke DB (endpoint manual) |
 | **3** | ✅ **Siap** | Modul **audit** validate import (endpoint, tanpa overwrite) |
-| 4 | ⬜ | Page guru (mobile) |
+| **4** | ✅ **Siap** | Dashboard UI read-only, mobile-first (vanilla) |
 | 5 | ⬜ | Admin biasa — `ADMIN` (SU Kehadiran), login username/password |
 | 6 | ⬜ | Ketua admin — `SUPER_ADMIN` (SU HEM) |
 | 7 | ⬜ | Write-back ke Google Sheet (sync dua hala) |
@@ -148,6 +148,24 @@ Audit data yang telah disync ke PostgreSQL. **Tiada data lama diubah** — hanya
 | GET | `/api/audit/warnings` | Konflik guru Sheet#1/#2, tarikh gagal normalize, kelas tiada metadata, pelajar duplicate, attendance duplicate (sumber) |
 
 `attendance-compare` membanding *snapshot* Sheet (tersimpan) dengan kiraan semula server — **tanpa menulis**. `warnings` membaca semula `DATA_KEHADIRAN` (read-only) untuk kesan duplicate sumber; dilangkau dengan anggun jika Sheet tak dapat diakses. Tiada perubahan skema diperlukan untuk Fasa 3.
+
+---
+
+## Fasa 4 — Dashboard UI (read-only, mobile-first)
+
+Frontend vanilla (HTML/CSS/JS) dalam `public/`, di-serve oleh Express. **Read-only** — hanya papar data yang sudah disync. Tiada React, tiada login, tiada PII pelajar (hanya agregat + nama guru).
+
+Buka di pelayar: `http://<ip-server>:3010/`
+
+| Method | Path | Fungsi |
+|---|---|---|
+| GET | `/` | Dashboard mobile (HTML) |
+| GET | `/dashboard` | Redirect ke `/` |
+| GET | `/api/dashboard/summary` | Jumlah pelajar/kelas/rekod, tarikh, peratus keseluruhan, status sync |
+| GET | `/api/dashboard/classes` | Semua kelas + guru + pembantu + bil pelajar aktif |
+| GET | `/api/dashboard/recent-attendance?limit=50` | Rekod kehadiran terkini (agregat) |
+
+4 tab: **Utama** (statistik + peratus keseluruhan), **Kelas** (senarai), **Kehadiran** (rekod terkini), **Audit** (status dari endpoint Fasa 3). Peratus diwarna ikut ambang: ≥95% hijau, ≥85% amber, <85% merah.
 
 ---
 

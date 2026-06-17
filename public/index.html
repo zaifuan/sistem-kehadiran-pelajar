@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a5447" />
+  <title>Pantau Kehadiran</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div>
+        <p class="eyebrow">SABK Maahad Al-Khair Lil Banat</p>
+        <h1>Pantau Kehadiran</h1>
+      </div>
+      <button id="btn-refresh" class="refresh" type="button" aria-label="Muat semula">
+        <span class="refresh-ico" aria-hidden="true">↻</span>
+      </button>
+    </div>
+    <p id="sync-strip" class="sync-strip">Memuatkan…</p>
+  </header>
+
+  <main>
+    <!-- 1. DASHBOARD -->
+    <section id="view-utama" class="view is-active" aria-label="Dashboard">
+      <div id="utama-body"></div>
+    </section>
+
+    <!-- 2. KELAS -->
+    <section id="view-kelas" class="view" aria-label="Senarai kelas" hidden>
+      <h2 class="view-title">Senarai Kelas</h2>
+      <div id="kelas-body"></div>
+    </section>
+
+    <!-- 3. KEHADIRAN -->
+    <section id="view-kehadiran" class="view" aria-label="Kehadiran terkini" hidden>
+      <h2 class="view-title">Kehadiran Terkini</h2>
+      <div id="kehadiran-body"></div>
+    </section>
+
+    <!-- 4. AUDIT -->
+    <section id="view-audit" class="view" aria-label="Status audit" hidden>
+      <h2 class="view-title">Status Audit</h2>
+      <div id="audit-body"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Navigasi">
+    <button class="tab is-active" type="button" data-view="utama">
+      <span class="tab-ico" aria-hidden="true">▦</span><span class="tab-label">Utama</span>
+    </button>
+    <button class="tab" type="button" data-view="kelas">
+      <span class="tab-ico" aria-hidden="true">❖</span><span class="tab-label">Kelas</span>
+    </button>
+    <button class="tab" type="button" data-view="kehadiran">
+      <span class="tab-ico" aria-hidden="true">≣</span><span class="tab-label">Kehadiran</span>
+    </button>
+    <button class="tab" type="button" data-view="audit">
+      <span class="tab-ico" aria-hidden="true">✓</span><span class="tab-label">Audit</span>
+    </button>
+  </nav>
+
+  <script src="/app.js"></script>
+</body>
+</html>
