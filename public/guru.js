@@ -66,7 +66,12 @@ function esc(v) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 async function fetchJSON(url, opts) {
-  const res = await fetch(url, opts);
+  const res = await fetch(url, { credentials: 'include', ...(opts || {}) });
+  if (res.status === 401) {
+    // Sesi tamat / belum log masuk → ke halaman log masuk.
+    location.href = '/login?next=' + encodeURIComponent(location.pathname);
+    throw new Error('Perlu log masuk');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.ralat || ('HTTP ' + res.status));
   return data;

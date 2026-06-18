@@ -15,11 +15,11 @@ Migrasi sistem kehadiran **SABK MAAHAD AL-KHAIR LIL BANAT** daripada Google Apps
 | **2** | ✅ **Siap** | Sync Google Sheet **read-only** ke DB (endpoint manual) |
 | **3** | ✅ **Siap** | Modul **audit** validate import (endpoint, tanpa overwrite) |
 | **4** | ✅ **Siap** | Dashboard UI read-only, mobile-first (vanilla) |
-| **5** | ✅ **Siap** | Portal Guru Kelas — isi kehadiran harian (tulis ke DB, tanpa login) |
-| 6 | ⬜ | Ketua admin — `SUPER_ADMIN` (SU HEM) |
-| 7 | ⬜ | Write-back ke Google Sheet (sync dua hala) |
-| 8 | ⬜ | Telegram (token **baru** dalam `.env`) |
-| 9 | ⬜ | Deployment production di `srv-zai-93` |
+| **5** | ✅ **Siap** | Portal Guru Kelas — isi kehadiran harian (tulis ke DB) |
+| **6** | ✅ **Siap** | Dashboard Admin harian (`/admin`) |
+| **7** | ✅ **Siap** | Analytics peratus kehadiran (`/analytics`) |
+| **8** | ✅ **Siap** | Autentikasi, peranan & pemetaan guru-kelas (sesi PostgreSQL, argon2id) |
+| 9 | ⬜ | Telegram (token **baru** dalam `.env`) + write-back Sheet + deployment |
 
 ---
 
@@ -183,6 +183,35 @@ Buka di pelayar: `http://<ip-server>:3010/guru`
 | POST | `/api/guru/kehadiran` | Simpan kehadiran (upsert tarikh+kelas) |
 
 **Formula** (sama GAS): wakil sekolah **dikira hadir**; tidak hadir sebenar = bukan wakil; `hadir = jumlah − tidak_hadir`; `peratus = hadir/jumlah*100`. Rekod ditandai `sumber='server'`. Jika tarikh+kelas sudah wujud → **update**, bukan duplicate. Senarai tidak hadir disimpan dalam `attendance_absentees` (nama+sebab), wakil dalam `attendance_representatives` — serasi format Fasa 2. Sebab ketidakhadiran = 12 kategori sama seperti GAS. Tarikh = hari ini (zon Asia/Kuala_Lumpur, ditetapkan server).
+
+---
+
+## Fasa 8 — Autentikasi, Peranan & Pemetaan Guru-Kelas
+
+Lapisan log masuk berasaskan **sesi cookie** (bukan JWT) disimpan dalam PostgreSQL (`connect-pg-simple`), kata laluan di-hash **argon2id**. Skema 100% additif.
+
+**Peranan:** `GURU` (kelas ditugaskan sahaja), `ADMIN` (SU Kehadiran), `SUPER_ADMIN` (SU HEM).
+
+| Method | Path | Akses |
+|---|---|---|
+| POST | `/api/auth/login` | terbuka |
+| POST | `/api/auth/logout` | terbuka |
+| GET | `/api/auth/me` | terbuka (pulang sesi semasa) |
+| POST | `/api/auth/tukar-kata-laluan` | log masuk |
+| GET | `/api/admin/users` | ADMIN, SUPER_ADMIN |
+| GET/POST/DELETE | `/api/admin/assignments` | ADMIN, SUPER_ADMIN |
+
+**Perlindungan route:**
+
+| Route | Syarat |
+|---|---|
+| `/`, `/api/dashboard/*`, `/api/health`, `/api/sync/*` | **terbuka** (read-only — tidak diubah) |
+| `/guru`, `/api/guru/*` | GURU / ADMIN / SUPER_ADMIN (guru: kelas ditugaskan sahaja) |
+| `/admin`, `/api/admin/*` | ADMIN / SUPER_ADMIN |
+| `/analytics`, `/api/analytics/*` | ADMIN / SUPER_ADMIN |
+| `/api/audit/*` | SUPER_ADMIN |
+
+Pemetaan guru↔kelas dalam `teacher_class_assignments`. Pengguna awal (`superadmin`, `admin`) disemai automatik ketika start (idempotent, `RUN_SEED_ON_START`). **Tukar kata laluan lalai selepas log masuk pertama.**
 
 ---
 

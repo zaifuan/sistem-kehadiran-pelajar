@@ -152,3 +152,31 @@ INSERT INTO roles (kod, nama) VALUES
   ('ADMIN', 'SU Kehadiran'),
   ('SUPER_ADMIN', 'SU HEM')
 ON CONFLICT (kod) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+--  FASA 8 — Autentikasi, Peranan & Pemetaan Guru-Kelas (additif)
+--  Prinsip: 100% additif & idempotent. TIDAK mengubah jadual data
+--  sedia ada (Fasa 1-7) selain menambah lajur baru pada `users`.
+--  Sesi disimpan dalam jadual `session` (dicipta automatik oleh
+--  connect-pg-simple — createTableIfMissing), tiada DDL di sini.
+-- ════════════════════════════════════════════════════════════
+
+-- Peranan tambahan untuk guru kelas (boleh isi kehadiran kelas ditugaskan)
+INSERT INTO roles (kod, nama) VALUES
+  ('GURU', 'Guru Kelas')
+ON CONFLICT (kod) DO NOTHING;
+
+-- Lajur tambahan pada users (nama paparan + jejak log masuk terakhir)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS nama        TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login  TIMESTAMPTZ;
+
+-- Pemetaan guru ↔ kelas (seorang guru boleh banyak kelas; sebaliknya juga)
+CREATE TABLE IF NOT EXISTS teacher_class_assignments (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+  class_kod    TEXT    NOT NULL REFERENCES classes(kod) ON DELETE CASCADE,
+  dicipta_pada TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, class_kod)
+);
+CREATE INDEX IF NOT EXISTS idx_tca_user  ON teacher_class_assignments (user_id);
+CREATE INDEX IF NOT EXISTS idx_tca_kelas ON teacher_class_assignments (class_kod);

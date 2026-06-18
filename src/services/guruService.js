@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import { listKelasKodForUser } from './assignmentService.js';
 
 // ── Tarikh & masa "hari ini" ikut zon Asia/Kuala_Lumpur (server authoritative) ──
 function todayKL() {
@@ -16,7 +17,20 @@ function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 function s(v) { return v === undefined || v === null ? '' : String(v).trim(); }
 
 // ── Senarai kelas (untuk grid pilih kelas) ──
-export async function getClasses() {
+//   user: { id, role } — jika role GURU, hanya kelas yang ditugaskan dipulang.
+//   ADMIN/SUPER_ADMIN (atau user tiada — serasi pemanggil lama) = semua kelas.
+export async function getClasses(user) {
+  if (user && user.role === 'GURU') {
+    const kodList = await listKelasKodForUser(user.id);
+    if (kodList.length === 0) return { ok: true, jumlah: 0, kelas: [] };
+    const r = await pool.query(`
+      SELECT c.kod, c.nama, c.tingkatan, c.guru_kelas, c.pembantu_kelas,
+        (SELECT COUNT(*) FROM students s WHERE s.class_kod=c.kod AND s.status='aktif')::int AS pelajar_aktif
+      FROM classes c
+      WHERE c.kod = ANY($1)
+      ORDER BY c.tingkatan NULLS LAST, c.kod`, [kodList]);
+    return { ok: true, jumlah: r.rowCount, kelas: r.rows };
+  }
   const r = await pool.query(`
     SELECT c.kod, c.nama, c.tingkatan, c.guru_kelas, c.pembantu_kelas,
       (SELECT COUNT(*) FROM students s WHERE s.class_kod=c.kod AND s.status='aktif')::int AS pelajar_aktif

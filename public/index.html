@@ -39,11 +39,7 @@
       <div id="kehadiran-body"></div>
     </section>
 
-    <!-- 4. AUDIT -->
-    <section id="view-audit" class="view" aria-label="Status audit" hidden>
-      <h2 class="view-title">Status Audit</h2>
-      <div id="audit-body"></div>
-    </section>
+    <!-- Tab Audit disembunyikan dari dashboard awam (Fasa 8) — kini SUPER_ADMIN sahaja via /api/audit. -->
   </main>
 
   <nav class="tabbar" aria-label="Navigasi">
@@ -55,9 +51,6 @@
     </button>
     <button class="tab" type="button" data-view="kehadiran">
       <span class="tab-ico" aria-hidden="true">≣</span><span class="tab-label">Kehadiran</span>
-    </button>
-    <button class="tab" type="button" data-view="audit">
-      <span class="tab-ico" aria-hidden="true">✓</span><span class="tab-label">Audit</span>
     </button>
   </nav>
 
