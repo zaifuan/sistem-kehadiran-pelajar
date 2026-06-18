@@ -89,14 +89,23 @@ function tarikhHariIni() {
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
+function masaSekarang() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+// Jam langsung pada header (tarikh + masa peranti).
+function tickClock() {
+  const t = $('#tarikh-hari-ini'); if (t) t.textContent = tarikhHariIni();
+  const m = $('#masa-semasa'); if (m) m.textContent = masaSekarang();
+}
 
 // ── State ──
 const state = {
   classesByKod: {},
   kelas: null, namaKelas: '', guru: '',
   pelajar: [],            // [nama]
-  status: {},             // { nama: { jenis:'th'|'wakil', sebab } }
-  currentNama: null,      // pelajar yang sedang dipilih di modal
+  status: {},             // { nama: { jenis:'th'|'wakil', catIdx, sebab } }
   screen: 'kelas',
 };
 
@@ -105,27 +114,32 @@ function showScreen(name) {
   state.screen = name;
   ['kelas', 'isi', 'sahkan'].forEach((s) => { $('#screen-' + s).hidden = s !== name; });
   $('#bar-ringkasan').hidden = name !== 'isi';
-  $('#btn-back').hidden = name === 'kelas';
+  // Subbar (back + tajuk skrin) hanya pada skrin isi/sahkan; header jenama kekal.
+  $('#subbar').hidden = name === 'kelas';
   $('#topbar-title').textContent =
     name === 'isi' ? (state.kelas || 'Isi Kehadiran') :
-    name === 'sahkan' ? 'Sahkan' : 'Isi Kehadiran';
+    name === 'sahkan' ? 'Sahkan Kehadiran' : 'Isi Kehadiran';
   window.scrollTo(0, 0);
 }
 
-// ── Skrin 1: grid kelas ──
+// ── Skrin 1: grid kelas (dengan status isi hari ini) ──
 async function loadGridKelas() {
   const box = $('#grid-kelas');
   try {
-    const d = await fetchJSON('/api/guru/classes');
+    const d = await fetchJSON('/api/guru/classes-status');
     state.classesByKod = {};
     d.kelas.forEach((k) => { state.classesByKod[k.kod] = k; });
     box.innerHTML = KELAS_GRID.flat().map((kod) => {
       const k = state.classesByKod[kod];
       const bil = k ? k.pelajar_aktif : 0;
+      const selesai = !!(k && k.status_hari_ini === 'selesai');
       const isStam = kod.indexOf('STAM') === 0;
-      return `<button class="kelas-btn${isStam ? ' stam' : ''}" type="button" data-kod="${esc(kod)}">
+      const stateCls = selesai ? 'is-selesai' : 'is-belum';
+      const label = selesai ? 'Selesai' : 'Belum Isi';
+      return `<button class="kelas-btn ${stateCls}${isStam ? ' stam' : ''}" type="button" data-kod="${esc(kod)}">
         <span class="kod">${esc(kod)}</span>
         <span class="bil num">${bil} pelajar</span>
+        <span class="kstatus">${label}</span>
       </button>`;
     }).join('');
   } catch (e) {
@@ -156,27 +170,59 @@ async function openKelas(kod) {
   }
 }
 
+// Bina sel sebab (dropdown kategori + sub-sebab) untuk pelajar tidak hadir.
+function reasonCell(nama, st) {
+  const kategoriOpts = KATEGORI_SEBAB.map((c, i) =>
+    `<option value="${i}"${st.catIdx === i ? ' selected' : ''}>${esc(c.nama)}</option>`).join('');
+  let html = `<select class="sel-kategori" data-nama="${esc(nama)}" aria-label="Kategori sebab">
+      <option value=""${st.catIdx === '' || st.catIdx == null ? ' selected' : ''}>— Pilih sebab —</option>${kategoriOpts}
+    </select>`;
+  // Sub-sebab hanya jika kategori dipilih DAN ada lebih daripada satu butiran.
+  if (st.catIdx !== '' && st.catIdx != null && KATEGORI_SEBAB[st.catIdx].sebab.length > 1) {
+    const subOpts = KATEGORI_SEBAB[st.catIdx].sebab.map((s) =>
+      `<option value="${esc(s)}"${st.sebab === s ? ' selected' : ''}>${esc(s)}</option>`).join('');
+    html += `<select class="sel-sebab" data-nama="${esc(nama)}" aria-label="Butiran sebab">
+        <option value=""${!st.sebab ? ' selected' : ''}>— Pilih butiran —</option>${subOpts}
+      </select>`;
+  }
+  return html;
+}
+
+// Tetapkan kategori sebab untuk seorang pelajar; tentukan jenis (th/wakil).
+function setKategori(nama, idxStr) {
+  const st = state.status[nama];
+  if (!st) return;
+  if (idxStr === '') { st.jenis = 'th'; st.catIdx = ''; st.sebab = ''; return; }
+  const idx = Number(idxStr);
+  const cat = KATEGORI_SEBAB[idx];
+  st.catIdx = idx;
+  st.jenis = cat.wakil ? 'wakil' : 'th';                  // Wakil Sekolah → dikira hadir
+  st.sebab = cat.sebab.length === 1 ? cat.sebab[0] : '';  // auto-pilih jika hanya satu butiran
+}
+
 function renderSenarai() {
   const filter = ($('#cari-pelajar').value || '').trim().toUpperCase();
   const box = $('#senarai-pelajar');
   if (!state.pelajar.length) { box.innerHTML = '<div class="empty">Tiada pelajar aktif dalam kelas ini.</div>'; return; }
   const senarai = state.pelajar.filter((n) => !filter || n.toUpperCase().indexOf(filter) !== -1);
   if (!senarai.length) { box.innerHTML = '<div class="empty">Tiada nama sepadan dengan carian.</div>'; return; }
-  box.innerHTML = senarai.map((nama) => {
+  box.innerHTML = senarai.map((nama, i) => {
     const st = state.status[nama];
-    if (st && st.jenis === 'wakil') {
-      return `<div class="pcard is-wakil" data-nama="${esc(nama)}">
-        <div class="pcol"><div class="pnama">${esc(nama)}</div><div class="pstatus wk">🎽 Wakil Sekolah · dikira hadir</div></div>
-        <button class="btn-clear" type="button" data-act="clear" data-nama="${esc(nama)}">↺</button></div>`;
-    }
-    if (st && st.jenis === 'th') {
-      return `<div class="pcard is-th" data-nama="${esc(nama)}">
-        <div class="pcol"><div class="pnama">${esc(nama)}</div><div class="pstatus th">Tidak hadir · ${esc(st.sebab)}</div></div>
-        <button class="btn-clear" type="button" data-act="clear" data-nama="${esc(nama)}">↺</button></div>`;
-    }
-    return `<div class="pcard" data-nama="${esc(nama)}">
-      <div class="pcol"><div class="pnama">${esc(nama)}</div></div>
-      <button class="btn-th" type="button" data-act="th" data-nama="${esc(nama)}">Tidak Hadir</button></div>`;
+    const tidak = !!st;                       // ada entry = unticked (tidak hadir / wakil)
+    const isWakil = tidak && st.jenis === 'wakil';
+    const cls = isWakil ? 'is-wakil' : tidak ? 'is-th' : '';
+    const sebabHtml = tidak
+      ? `<div class="psebab">${reasonCell(nama, st)}${isWakil ? '<span class="wk-tag">🎽 Wakil · dikira hadir</span>' : ''}</div>`
+      : '<div class="psebab"><span class="psebab-none">—</span></div>';
+    return `<div class="prow ${cls}">
+      <span class="pbil num">${i + 1}</span>
+      <label class="pchk" aria-label="Hadir: ${esc(nama)}">
+        <input type="checkbox" class="chk-hadir" data-nama="${esc(nama)}"${tidak ? '' : ' checked'} />
+        <span class="cbox" aria-hidden="true"></span>
+      </label>
+      <div class="pnama">${esc(nama)}</div>
+      ${sebabHtml}
+    </div>`;
   }).join('');
 }
 
@@ -191,41 +237,6 @@ function updateRingkasan() {
   $('#r-th').textContent = th;
   $('#r-wakil').textContent = wk;
   $('#r-hadir').textContent = jumlah - th;
-}
-
-// ── Modal sebab ──
-function bukaModalSebab(nama) {
-  state.currentNama = nama;
-  $('#sebab-nama').textContent = nama;
-  $('#modal-sebab').hidden = false;
-  paparKategori();
-}
-function tutupModalSebab() { $('#modal-sebab').hidden = true; state.currentNama = null; }
-
-function paparKategori() {
-  $('#sebab-title').textContent = 'Pilih Sebab';
-  $('#sebab-back').hidden = true;
-  $('#sebab-list').innerHTML = KATEGORI_SEBAB.map((cat, i) =>
-    `<button class="sebab-item${cat.wakil ? ' wakil' : ''}" type="button" data-cat="${i}">
-      <span>${esc(cat.nama)}</span><span class="chev">›</span></button>`
-  ).join('');
-  $('#sebab-list').scrollTop = 0;
-}
-function paparSubSebab(catIndex) {
-  const cat = KATEGORI_SEBAB[catIndex];
-  $('#sebab-title').textContent = cat.nama;
-  $('#sebab-back').hidden = false;
-  $('#sebab-list').innerHTML = cat.sebab.map((sb) =>
-    `<button class="sebab-item" type="button" data-sebab="${esc(sb)}" data-cat="${catIndex}">
-      <span>${esc(sb)}</span></button>`
-  ).join('');
-  $('#sebab-list').scrollTop = 0;
-}
-function pilihSebab(nama, sebab, isWakil) {
-  state.status[nama] = { jenis: isWakil ? 'wakil' : 'th', sebab };
-  tutupModalSebab();
-  renderSenarai();
-  updateRingkasan();
 }
 
 // ── Skrin 3: sahkan ──
@@ -246,7 +257,7 @@ function bukaSahkan() {
   let html = '';
   if (th.length) {
     html += '<div class="sah-box"><h4>Tidak Hadir (' + th.length + ')</h4>' +
-      th.map((x) => `<div class="sah-row"><span>${esc(x.nama)}</span><span class="sb">${esc(x.sebab)}</span></div>`).join('') + '</div>';
+      th.map((x) => `<div class="sah-row"><span>${esc(x.nama)}</span><span class="sb">${esc(x.sebab || 'Tidak dinyatakan')}</span></div>`).join('') + '</div>';
   }
   if (wk.length) {
     html += '<div class="sah-box"><h4>Wakil Sekolah (' + wk.length + ')</h4>' +
@@ -290,32 +301,25 @@ $('#grid-kelas').addEventListener('click', (e) => {
   if (b) openKelas(b.dataset.kod);
 });
 
-$('#senarai-pelajar').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-act]');
-  if (!b) return;
-  const nama = b.dataset.nama;
-  if (b.dataset.act === 'th') bukaModalSebab(nama);
-  else if (b.dataset.act === 'clear') { delete state.status[nama]; renderSenarai(); updateRingkasan(); }
+// Tick/untick kehadiran + pilihan sebab inline (delegasi event 'change').
+$('#senarai-pelajar').addEventListener('change', (e) => {
+  const t = e.target;
+  const nama = t.dataset && t.dataset.nama;
+  if (!nama) return;
+  if (t.classList.contains('chk-hadir')) {
+    if (t.checked) delete state.status[nama];                                   // hadir semula → bersih
+    else state.status[nama] = { jenis: 'th', catIdx: '', sebab: '' };           // untick → tidak hadir
+    renderSenarai(); updateRingkasan();
+  } else if (t.classList.contains('sel-kategori')) {
+    setKategori(nama, t.value);
+    renderSenarai(); updateRingkasan();
+  } else if (t.classList.contains('sel-sebab')) {
+    if (state.status[nama]) state.status[nama].sebab = t.value;
+    renderSenarai(); updateRingkasan();
+  }
 });
 
 $('#cari-pelajar').addEventListener('input', renderSenarai);
-
-$('#sebab-list').addEventListener('click', (e) => {
-  const b = e.target.closest('.sebab-item');
-  if (!b) return;
-  if (b.dataset.sebab != null) {
-    const cat = KATEGORI_SEBAB[Number(b.dataset.cat)];
-    pilihSebab(state.currentNama, b.dataset.sebab, !!(cat && cat.wakil));
-    return;
-  }
-  const idx = Number(b.dataset.cat);
-  const cat = KATEGORI_SEBAB[idx];
-  if (cat.sebab.length === 1) pilihSebab(state.currentNama, cat.sebab[0], !!cat.wakil);
-  else paparSubSebab(idx);
-});
-$('#sebab-back').addEventListener('click', paparKategori);
-$('#sebab-close').addEventListener('click', tutupModalSebab);
-$('#modal-sebab').addEventListener('click', (e) => { if (e.target.id === 'modal-sebab') tutupModalSebab(); });
 
 $('#btn-simpan').addEventListener('click', bukaSahkan);
 $('#btn-reset').addEventListener('click', () => {
@@ -332,5 +336,6 @@ $('#btn-back').addEventListener('click', () => {
 });
 
 // ── Mula ──
-$('#tarikh-hari-ini').textContent = tarikhHariIni();
+tickClock();
+setInterval(tickClock, 1000);
 loadGridKelas();

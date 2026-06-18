@@ -65,9 +65,9 @@ export function buatApp() {
   app.use('/api/sync', syncRouter);         // sync read-only (tidak disentuh)
   app.use('/api/dashboard', dashboardRouter); // dashboard read-only — KEKAL TERBUKA
   app.use('/api/auth', authRouter);         // log masuk / keluar / me
+  app.use('/api/guru', guruRouter);         // Portal Guru — TERBUKA (Fasa 8.1: tanpa login)
 
-  // ── API dilindungi (Fasa 8) ──
-  app.use('/api/guru', requireAuth, requireRole('GURU', 'ADMIN', 'SUPER_ADMIN'), guruRouter);
+  // ── API dilindungi (Fasa 8) — admin/superadmin sahaja ──
   app.use('/api/admin', requireAuth, requireRole('ADMIN', 'SUPER_ADMIN'), adminRouter);
   app.use('/api/analytics', requireAuth, requireRole('ADMIN', 'SUPER_ADMIN'), analyticsRouter);
   app.use('/api/audit', requireAuth, requireRole('SUPER_ADMIN'), auditRouter);
@@ -77,11 +77,25 @@ export function buatApp() {
   app.get('/login', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'login.html')));
   app.get('/dashboard', (req, res) => res.redirect('/'));
 
-  // Halaman terlindung — DIDAFTAR SEBELUM express.static supaya guard
-  // mendahului penyajian fail statik (.html boleh diakses terus jika tidak).
-  // Lindungi kedua-dua bentuk: /guru dan /guru.html, dsb.
+  // ── Routing ikut domain (Fasa 8.1) ──
+  // Portal guru & portal admin dihos pada domain berasingan. Hanya path '/'
+  // dialih; host lain (cth IP server) jatuh ke dashboard statik seperti biasa.
+  const HOST_GURU = 'kehadiranpelajar.byzaifuan.com';
+  const HOST_ADMIN = 'adminkehadiranpelajar.byzaifuan.com';
+  app.get('/', (req, res, next) => {
+    const host = (req.hostname || '').toLowerCase();
+    if (host === HOST_GURU) return res.redirect('/guru');
+    if (host === HOST_ADMIN) return res.redirect('/login');
+    return next(); // host lain → dashboard read-only (index.html) via express.static
+  });
+
   const sendPage = (file) => (req, res) => res.sendFile(path.join(__dirname, '..', 'public', file));
-  app.get(['/guru', '/guru.html'], requirePage('GURU', 'ADMIN', 'SUPER_ADMIN'), sendPage('guru.html'));
+
+  // Portal guru — TERBUKA tanpa login (Fasa 8.1), seperti sebelum Fasa 8.
+  app.get(['/guru', '/guru.html'], sendPage('guru.html'));
+
+  // Halaman admin terlindung — DIDAFTAR SEBELUM express.static supaya guard
+  // mendahului penyajian fail statik (.html boleh diakses terus jika tidak).
   app.get(['/admin', '/admin.html'], requirePage('ADMIN', 'SUPER_ADMIN'), sendPage('admin.html'));
   app.get(['/analytics', '/analytics.html'], requirePage('ADMIN', 'SUPER_ADMIN'), sendPage('analytics.html'));
 

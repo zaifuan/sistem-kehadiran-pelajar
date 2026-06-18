@@ -21,6 +21,9 @@
   --bad-bg: #fbe9e7;
   --wakil: #0f6e5c;
   --wakil-bg: #e3f4ef;
+  /* Header navy/dark blue — gaya sistem GAS asal */
+  --navy: #0f2c52;
+  --navy-2: #15396b;
   --radius: 14px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(20,33,30,.06), 0 6px 16px rgba(20,33,30,.05);
@@ -35,42 +38,80 @@ html, body {
 }
 .num { font-variant-numeric: tabular-nums; }
 
-/* Topbar */
+/* Topbar — header navy gaya GAS asal (logo kiri, jenama, jam kanan) */
 .topbar {
-  position: sticky; top: 0; z-index: 30; background: var(--primary-dark); color: #eafaf5;
-  padding: calc(env(safe-area-inset-top) + 12px) 14px 12px;
-  box-shadow: 0 2px 10px rgba(10,84,71,.25);
+  position: sticky; top: 0; z-index: 30;
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); color: #eef4ff;
+  padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+  box-shadow: 0 2px 12px rgba(15,44,82,.30);
 }
-.topbar-row { display: flex; align-items: center; gap: 10px; }
-.ttl { flex: 1 1 auto; min-width: 0; }
-.eyebrow { margin: 0 0 1px; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: #8fd3c2; font-weight: 600; }
-.topbar h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tarikh { flex: none; font-size: 12.5px; color: #bfe7dc; font-weight: 600; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo {
+  flex: 0 0 auto;                 /* jangan tumbuh/kecut dalam flex */
+  display: block;
+  width: 64px; height: 64px;      /* desktop 64×64 */
+  max-width: 64px; max-height: 64px;   /* kunci — tidak boleh melebihi header */
+  aspect-ratio: 1 / 1;
+  object-fit: contain;            /* kekalkan nisbah asal */
+  border-radius: 8px; background: rgba(255,255,255,.10); padding: 4px;
+}
+.brand-txt { flex: 1 1 auto; min-width: 0; }
+.brand-txt .sekolah {
+  margin: 0; font-size: 16px; font-weight: 800; letter-spacing: .01em; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand-txt .sistem { margin: 2px 0 0; font-size: 12px; color: #b9cdec; font-weight: 500; }
+.clock { flex: none; text-align: right; display: flex; flex-direction: column; gap: 1px; }
+.clock .c-tarikh { font-size: 12.5px; color: #cfe0fb; font-weight: 600; }
+.clock .c-masa { font-size: 17px; font-weight: 750; color: #ffffff; letter-spacing: .02em; }
+/* Subbar — back + tajuk skrin (hanya pada skrin isi/sahkan) */
+.subbar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.subbar[hidden] { display: none; }
+.subbar .screen-title { font-size: 15px; font-weight: 700; color: #eef4ff; }
 .iconbtn {
-  flex: none; width: 38px; height: 38px; border-radius: 50%;
-  border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08);
-  color: #eafaf5; font-size: 18px; cursor: pointer;
+  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.24); background: rgba(255,255,255,.10);
+  color: #eef4ff; font-size: 18px; cursor: pointer;
 }
-.iconbtn:active { background: rgba(255,255,255,.2); }
+.iconbtn:active { background: rgba(255,255,255,.22); }
 
 /* Layout */
 main { padding: 16px 14px calc(var(--bar-h) + env(safe-area-inset-bottom)); max-width: 760px; margin: 0 auto; }
 .screen[hidden] { display: none; }
 .screen { animation: fade .18s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.hint { margin: 2px 2px 14px; color: var(--ink-soft); font-size: 14px; }
+.hint { margin: 0; color: var(--ink-soft); font-size: 14px; }
+
+/* Bar atas skrin kelas: hint + legenda status */
+.kelas-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 2px 2px 14px; flex-wrap: wrap; }
+.legend { display: flex; gap: 8px; flex: none; }
+.legend .lg { font-size: 11px; font-weight: 650; padding: 4px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
+.legend .lg::before { content: ""; width: 8px; height: 8px; border-radius: 50%; }
+.legend .lg-ok { color: var(--ok); background: var(--ok-bg); }
+.legend .lg-ok::before { background: var(--ok); }
+.legend .lg-bad { color: var(--bad); background: var(--bad-bg); }
+.legend .lg-bad::before { background: var(--bad); }
 
 /* Grid kelas (3 lajur → STAM jatuh ke baris akhir) */
 .grid-kelas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
 .kelas-btn {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 14px 8px; cursor: pointer; text-align: center;
-  display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 78px; justify-content: center;
+  position: relative; background: var(--surface); border: 1px solid var(--line);
+  border-left: 5px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 13px 8px; cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 92px; justify-content: center;
+  transition: transform .08s ease;
 }
 .kelas-btn:active { transform: scale(.97); }
 .kelas-btn .kod { font-size: 20px; font-weight: 750; color: var(--primary-dark); letter-spacing: .01em; }
 .kelas-btn .bil { font-size: 11px; color: var(--ink-faint); }
+.kelas-btn .kstatus { font-size: 11px; font-weight: 700; margin-top: 3px; padding: 2px 8px; border-radius: 999px; }
 .kelas-btn.stam .kod { font-size: 15px; }
+
+/* Status isi hari ini — HIJAU = selesai, MERAH = belum isi (lembut, tidak garang) */
+.kelas-btn.is-selesai { border-color: #bfe2cf; border-left-color: var(--ok); background: var(--ok-bg); }
+.kelas-btn.is-selesai .kstatus { color: var(--ok); background: #d3efdd; }
+.kelas-btn.is-belum { border-color: #f2cfc9; border-left-color: var(--bad); background: var(--bad-bg); }
+.kelas-btn.is-belum .kstatus { color: var(--bad); background: #f7dcd7; }
 
 /* Kepala kelas (skrin isi) */
 .kelas-head { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 12px; }
@@ -107,6 +148,47 @@ main { padding: 16px 14px calc(var(--bar-h) + env(safe-area-inset-bottom)); max-
   border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .empty { text-align: center; color: var(--ink-faint); padding: 28px 12px; font-size: 14px; }
+
+/* ── Senarai pelajar: model tick/untick + sebab inline (Fasa 8.3) ── */
+
+/* Kepala kolum (desktop sahaja) */
+.phead {
+  display: grid; grid-template-columns: 44px 64px 1fr minmax(250px, 44%);
+  align-items: center; gap: 10px; padding: 4px 12px 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint);
+}
+.phead .h-hadir { text-align: center; }
+
+/* Baris pelajar */
+.prow {
+  display: grid; grid-template-columns: 44px 64px 1fr minmax(250px, 44%);
+  align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px 12px;
+}
+.prow .pbil { color: var(--ink-faint); font-size: 13px; text-align: center; }
+.prow .pnama { font-size: 14.5px; font-weight: 550; min-width: 0; }
+.prow.is-th { background: var(--bad-bg); border-color: #f2cfc9; border-left-color: var(--bad); }
+.prow.is-wakil { background: var(--wakil-bg); border-color: #bfe2d6; border-left-color: var(--wakil); }
+
+/* Checkbox hadir — besar, mudah ditekan */
+.pchk { position: relative; display: inline-flex; align-items: center; justify-content: center; justify-self: center; cursor: pointer; min-width: 32px; min-height: 32px; }
+.pchk input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.pchk .cbox { width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--ink-faint); background: #fff; transition: background .12s, border-color .12s; }
+.pchk input:checked + .cbox { background: var(--ok); border-color: var(--ok); position: relative; }
+.pchk input:checked + .cbox::after { content: ""; position: absolute; left: 9px; top: 4px; width: 6px; height: 12px; border: solid #fff; border-width: 0 3px 3px 0; transform: rotate(45deg); }
+.pchk input:focus-visible + .cbox { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Sel sebab (dropdown kategori + sub-sebab) */
+.psebab { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.psebab select {
+  flex: 1 1 auto; min-width: 0; max-width: 100%;
+  border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px;
+  font-size: 13.5px; background: #fff; color: var(--ink); appearance: auto;
+}
+.psebab select:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.psebab-none { color: var(--ink-faint); }
+.wk-tag { flex: none; font-size: 11px; font-weight: 700; color: var(--wakil); white-space: nowrap; }
 
 /* Bar ringkasan sticky */
 .bar-ringkasan {
@@ -185,5 +267,31 @@ main { padding: 16px 14px calc(var(--bar-h) + env(safe-area-inset-bottom)); max-
 .spinner { width: 26px; height: 26px; margin: 0 auto 12px; border: 3px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .err { text-align: center; color: var(--bad); padding: 28px 12px; font-size: 14px; grid-column: 1 / -1; }
+
+/* ── Mobile-first responsif ── */
+@media (max-width: 600px) {
+  .logo { width: 48px; height: 48px; max-width: 48px; max-height: 48px; }   /* mobile 48×48, nisbah dikekalkan */
+  .brand-txt .sekolah { font-size: 14px; white-space: normal; }
+  .brand-txt .sistem { font-size: 11px; }
+  .clock .c-masa { font-size: 15px; }
+
+  /* Senarai pelajar → kad bertindan (elak scroll mendatar) */
+  .phead { display: none; }
+  .prow {
+    grid-template-columns: 34px 1fr auto;
+    grid-template-areas: "bil nama chk" "sebab sebab sebab";
+    row-gap: 10px; padding: 12px;
+  }
+  .prow .pbil { grid-area: bil; }
+  .prow .pnama { grid-area: nama; font-size: 15px; }
+  .prow .pchk { grid-area: chk; justify-self: end; }
+  .prow .psebab { grid-area: sebab; }
+  .prow:not(.is-th):not(.is-wakil) .psebab { display: none; }   /* sembunyi '—' bagi pelajar hadir */
+  .psebab select { flex-basis: 100%; padding: 12px 10px; font-size: 15px; }   /* dropdown penuh & besar */
+}
+/* Skrin sangat sempit → 2 lajur supaya kad kekal besar & senang ditekan */
+@media (max-width: 359px) {
+  .grid-kelas { grid-template-columns: repeat(2, 1fr); }
+}
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

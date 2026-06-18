@@ -9,20 +9,35 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="topbar-row">
-      <button id="btn-back" class="iconbtn" type="button" aria-label="Kembali" hidden>←</button>
-      <div class="ttl">
-        <p class="eyebrow">SABK Maahad Al-Khair Lil Banat</p>
-        <h1 id="topbar-title">Isi Kehadiran</h1>
+    <div class="brand">
+      <img class="logo" src="/assets/logo-sekolah.png"
+           alt="Logo SABK Maahad Al-Khair Lil Banat"
+           onerror="this.style.display='none'" />
+      <div class="brand-txt">
+        <h1 class="sekolah">SABK MAAHAD AL-KHAIR LIL BANAT</h1>
+        <p class="sistem">Sistem Pengurusan Kehadiran Pelajar</p>
       </div>
-      <span class="tarikh num" id="tarikh-hari-ini"></span>
+      <div class="clock">
+        <span class="c-tarikh num" id="tarikh-hari-ini">—</span>
+        <span class="c-masa num" id="masa-semasa">—</span>
+      </div>
+    </div>
+    <div class="subbar" id="subbar" hidden>
+      <button id="btn-back" class="iconbtn" type="button" aria-label="Kembali">←</button>
+      <span id="topbar-title" class="screen-title">Isi Kehadiran</span>
     </div>
   </header>
 
   <main>
     <!-- Skrin 1: Pilih kelas -->
     <section id="screen-kelas" class="screen is-active" aria-label="Pilih kelas">
-      <p class="hint">Pilih kelas untuk isi kehadiran hari ini.</p>
+      <div class="kelas-bar">
+        <p class="hint">Pilih kelas untuk isi kehadiran hari ini.</p>
+        <div class="legend" aria-hidden="true">
+          <span class="lg lg-ok">Selesai</span>
+          <span class="lg lg-bad">Belum Isi</span>
+        </div>
+      </div>
       <div id="grid-kelas" class="grid-kelas"><div class="loading"><div class="spinner"></div>Memuatkan kelas…</div></div>
     </section>
 
@@ -33,6 +48,12 @@
         <p id="isi-guru" class="guru">—</p>
       </div>
       <input id="cari-pelajar" class="cari" type="search" placeholder="🔍 Cari nama pelajar…" autocomplete="off" />
+      <div class="phead" aria-hidden="true">
+        <span class="h-bil">Bil</span>
+        <span class="h-hadir">Hadir</span>
+        <span class="h-nama">Nama Pelajar</span>
+        <span class="h-sebab">Sebab Tidak Hadir</span>
+      </div>
       <div id="senarai-pelajar" class="senarai"></div>
     </section>
 
@@ -59,19 +80,6 @@
     <div class="ring-btns">
       <button id="btn-reset" class="btn btn-ghost sm" type="button">Set Semula</button>
       <button id="btn-simpan" class="btn btn-primary sm" type="button">Kemaskini / Simpan</button>
-    </div>
-  </div>
-
-  <!-- Modal sebab ketidakhadiran -->
-  <div id="modal-sebab" class="modal" hidden>
-    <div class="modal-card">
-      <div class="modal-head">
-        <button id="sebab-back" class="iconbtn" type="button" aria-label="Kembali" hidden>←</button>
-        <h3 id="sebab-title">Pilih Sebab</h3>
-        <button id="sebab-close" class="iconbtn" type="button" aria-label="Tutup">✕</button>
-      </div>
-      <p id="sebab-nama" class="sebab-nama"></p>
-      <div id="sebab-list" class="sebab-list"></div>
     </div>
   </div>
 

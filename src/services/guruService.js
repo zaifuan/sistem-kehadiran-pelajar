@@ -39,6 +39,33 @@ export async function getClasses(user) {
   return { ok: true, jumlah: r.rowCount, kelas: r.rows };
 }
 
+// ── Senarai kelas + status isi kehadiran HARI INI (Fasa 8.2) ──
+//   status_hari_ini = 'selesai' jika ada attendance_records utk (tarikh hari ini, kelas),
+//   selainnya 'belum'. Read-only PostgreSQL — TIADA bacaan/tulisan Google Sheet.
+//   Portal guru terbuka → tiada penapisan ikut pengguna.
+export async function getClassesStatus() {
+  const t = todayKL();
+  const r = await pool.query(`
+    SELECT c.kod, c.nama, c.tingkatan, c.guru_kelas, c.pembantu_kelas,
+      (SELECT COUNT(*) FROM students s WHERE s.class_kod=c.kod AND s.status='aktif')::int AS pelajar_aktif,
+      EXISTS (
+        SELECT 1 FROM attendance_records a
+        WHERE a.class_kod = c.kod AND a.tarikh = $1
+      ) AS sudah_isi
+    FROM classes c
+    ORDER BY c.tingkatan NULLS LAST, c.kod`, [t.iso]);
+  const kelas = r.rows.map((k) => ({
+    kod: k.kod,
+    nama: k.nama,
+    tingkatan: k.tingkatan,
+    guru_kelas: k.guru_kelas,
+    pembantu_kelas: k.pembantu_kelas,
+    pelajar_aktif: k.pelajar_aktif,
+    status_hari_ini: k.sudah_isi ? 'selesai' : 'belum',
+  }));
+  return { ok: true, tarikh: t.display, jumlah: kelas.length, kelas };
+}
+
 // ── Senarai pelajar aktif bagi satu kelas ──
 export async function getPelajar(kod) {
   const info = await pool.query(
