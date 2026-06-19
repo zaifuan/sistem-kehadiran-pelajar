@@ -56,10 +56,17 @@
       <div class="block">
         <div class="block-head"><h2>Tambah Cuti</h2></div>
         <div class="card form-card">
-          <div class="field">
-            <label for="cuti-tarikh">Tarikh</label>
-            <input id="cuti-tarikh" type="date" class="inp num" />
+          <div class="field-row">
+            <div class="field">
+              <label for="cuti-mula">Tarikh Mula</label>
+              <input id="cuti-mula" type="date" class="inp num" />
+            </div>
+            <div class="field">
+              <label for="cuti-tamat">Tarikh Tamat</label>
+              <input id="cuti-tamat" type="date" class="inp num" />
+            </div>
           </div>
+          <p class="field-note">Cuti satu hari: tetapkan Tarikh Mula = Tarikh Tamat. Bilangan hari dikira secara inklusif.</p>
           <div class="field">
             <label for="cuti-nama">Nama Cuti</label>
             <input id="cuti-nama" type="text" class="inp" placeholder="cth: Hari Kebangsaan" maxlength="120" />

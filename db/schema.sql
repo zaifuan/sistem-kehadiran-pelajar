@@ -187,17 +187,50 @@ CREATE INDEX IF NOT EXISTS idx_tca_kelas ON teacher_class_assignments (class_kod
 --  sedia ada (attendance_records dll). Idempotent.
 -- ════════════════════════════════════════════════════════════
 
--- Tetapan cuti — diurus oleh Super Admin. tarikh + nama_cuti unik
--- (satu tarikh boleh ada beberapa cuti berbeza nama, tetapi pasangan
---  tarikh+nama tidak boleh berulang). aktif = false → nyahaktif (soft).
+-- Tetapan cuti — diurus oleh Super Admin.
+-- FASA 9.1: julat tarikh (tarikh_mula → tarikh_tamat). Cuti satu hari =
+-- tarikh_mula sama dengan tarikh_tamat. Menyokong Cuti Penggal, Cuti
+-- Perayaan & Cuti Panjang berbilang hari. Pasangan (tarikh_mula,
+-- tarikh_tamat, nama_cuti) unik. aktif = false → nyahaktif (soft).
 CREATE TABLE IF NOT EXISTS holidays (
-  id         SERIAL PRIMARY KEY,
-  tarikh     DATE NOT NULL,
-  nama_cuti  TEXT NOT NULL,
-  catatan    TEXT,
-  aktif      BOOLEAN DEFAULT TRUE,
-  dicipta_pada TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (tarikh, nama_cuti)
+  id           SERIAL PRIMARY KEY,
+  tarikh_mula  DATE NOT NULL,
+  tarikh_tamat DATE NOT NULL,
+  nama_cuti    TEXT NOT NULL,
+  catatan      TEXT,
+  aktif        BOOLEAN DEFAULT TRUE,
+  dicipta_pada TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_holidays_tarikh ON holidays (tarikh);
-CREATE INDEX IF NOT EXISTS idx_holidays_aktif  ON holidays (aktif);
+
+-- Migrasi idempotent Fasa 9.1: DB lama menggunakan satu lajur `tarikh`.
+-- Salin nilai lama ke julat (mula = tamat = tarikh), kemudian buang
+-- lajur & constraint unik lama.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'holidays' AND column_name = 'tarikh'
+  ) THEN
+    ALTER TABLE holidays ADD COLUMN IF NOT EXISTS tarikh_mula  DATE;
+    ALTER TABLE holidays ADD COLUMN IF NOT EXISTS tarikh_tamat DATE;
+    UPDATE holidays SET tarikh_mula  = tarikh WHERE tarikh_mula  IS NULL;
+    UPDATE holidays SET tarikh_tamat = tarikh WHERE tarikh_tamat IS NULL;
+    ALTER TABLE holidays ALTER COLUMN tarikh_mula  SET NOT NULL;
+    ALTER TABLE holidays ALTER COLUMN tarikh_tamat SET NOT NULL;
+    ALTER TABLE holidays DROP CONSTRAINT IF EXISTS holidays_tarikh_nama_cuti_key;
+    ALTER TABLE holidays DROP COLUMN IF EXISTS tarikh;
+  END IF;
+END $$;
+
+-- Sahkan tarikh tamat tidak lebih awal daripada tarikh mula.
+ALTER TABLE holidays DROP CONSTRAINT IF EXISTS holidays_julat_chk;
+ALTER TABLE holidays ADD CONSTRAINT holidays_julat_chk
+  CHECK (tarikh_tamat >= tarikh_mula);
+
+-- Unik mengikut julat penuh + nama cuti.
+ALTER TABLE holidays DROP CONSTRAINT IF EXISTS holidays_julat_nama_key;
+ALTER TABLE holidays ADD CONSTRAINT holidays_julat_nama_key
+  UNIQUE (tarikh_mula, tarikh_tamat, nama_cuti);
+
+CREATE INDEX IF NOT EXISTS idx_holidays_mula  ON holidays (tarikh_mula);
+CREATE INDEX IF NOT EXISTS idx_holidays_aktif ON holidays (aktif);

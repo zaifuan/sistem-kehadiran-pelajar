@@ -146,16 +146,28 @@ export async function updateUser(id, perubahan, actorId) {
 //  2) TETAPAN CUTI (jadual holidays — Fasa 9)
 // ════════════════════════════════════════════════════════════
 
+// Bilangan hari inklusif antara dua tarikh ISO 'YYYY-MM-DD'.
+// Contoh: 2026-06-01 → 2026-06-03 = 3 hari; 2026-06-15 → 2026-06-15 = 1 hari.
+function kiraBilanganHari(mulaIso, tamatIso) {
+  const a = new Date(mulaIso + 'T00:00:00Z').getTime();
+  const b = new Date(tamatIso + 'T00:00:00Z').getTime();
+  return Math.round((b - a) / 86400000) + 1;
+}
+
 // Senarai cuti (terkini di atas). Boleh tapis aktif.
 export async function listHolidays(onlyActive = false) {
   const params = [];
   let where = '';
   if (onlyActive) { where = 'WHERE aktif=TRUE'; }
   const r = await pool.query(
-    `SELECT id, tarikh, nama_cuti, catatan, aktif, dicipta_pada
+    `SELECT id,
+            to_char(tarikh_mula,  'YYYY-MM-DD') AS tarikh_mula,
+            to_char(tarikh_tamat, 'YYYY-MM-DD') AS tarikh_tamat,
+            (tarikh_tamat - tarikh_mula + 1)     AS bilangan_hari,
+            nama_cuti, catatan, aktif, dicipta_pada
        FROM holidays
        ${where}
-       ORDER BY tarikh DESC, id DESC`,
+       ORDER BY tarikh_mula DESC, id DESC`,
     params
   );
   return {
@@ -163,7 +175,9 @@ export async function listHolidays(onlyActive = false) {
     jumlah: r.rowCount,
     cuti: r.rows.map((x) => ({
       id: x.id,
-      tarikh: x.tarikh,
+      tarikh_mula: x.tarikh_mula,
+      tarikh_tamat: x.tarikh_tamat,
+      bilangan_hari: Number(x.bilangan_hari) || 1,
       nama_cuti: x.nama_cuti,
       catatan: x.catatan || '',
       aktif: !!x.aktif,
@@ -172,12 +186,18 @@ export async function listHolidays(onlyActive = false) {
   };
 }
 
-// Tambah cuti. Medan wajib: tarikh, nama_cuti. catatan & aktif pilihan.
+// Tambah cuti. Medan wajib: tarikh_mula, tarikh_tamat, nama_cuti.
+// catatan & aktif pilihan. tarikh_tamat tidak boleh lebih awal drp mula.
 export async function createHoliday(input, actorId) {
-  const tarikh = normIsoDate(input && input.tarikh);
+  const mula = normIsoDate(input && input.tarikh_mula);
+  const tamat = normIsoDate(input && input.tarikh_tamat);
   const nama = s(input && input.nama_cuti);
-  if (!tarikh) { const e = new Error('Tarikh wajib (YYYY-MM-DD)'); e.status = 400; throw e; }
+  if (!mula) { const e = new Error('Tarikh mula wajib (YYYY-MM-DD)'); e.status = 400; throw e; }
+  if (!tamat) { const e = new Error('Tarikh tamat wajib (YYYY-MM-DD)'); e.status = 400; throw e; }
   if (!nama) { const e = new Error('Nama cuti wajib'); e.status = 400; throw e; }
+  if (tamat < mula) {
+    const e = new Error('Tarikh tamat tidak boleh lebih awal daripada tarikh mula'); e.status = 400; throw e;
+  }
   const catatan = s(input && input.catatan) || null;
   const aktif = input && input.aktif === false ? false : true;
 
@@ -187,22 +207,24 @@ export async function createHoliday(input, actorId) {
     let r;
     try {
       r = await client.query(
-        `INSERT INTO holidays (tarikh, nama_cuti, catatan, aktif)
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT (tarikh, nama_cuti) DO UPDATE SET aktif=TRUE, catatan=EXCLUDED.catatan
+        `INSERT INTO holidays (tarikh_mula, tarikh_tamat, nama_cuti, catatan, aktif)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (tarikh_mula, tarikh_tamat, nama_cuti)
+           DO UPDATE SET aktif=TRUE, catatan=EXCLUDED.catatan
          RETURNING id`,
-        [tarikh, nama, catatan, aktif]
+        [mula, tamat, nama, catatan, aktif]
       );
     } catch (err) {
       if (err && err.code === '23505') {
-        const e = new Error('Cuti pada tarikh & nama ini sudah wujud'); e.status = 409; throw e;
+        const e = new Error('Cuti pada julat tarikh & nama ini sudah wujud'); e.status = 409; throw e;
       }
       throw err;
     }
     const id = r.rows[0].id;
-    await audit(actorId, 'TAMBAH_CUTI', `Cuti #${id}: ${tarikh} ${nama}`, client);
+    const hari = kiraBilanganHari(mula, tamat);
+    await audit(actorId, 'TAMBAH_CUTI', `Cuti #${id}: ${nama} (${mula} → ${tamat}, ${hari} hari)`, client);
     await client.query('COMMIT');
-    return { ok: true, id, mesej: 'Cuti ditambah.' };
+    return { ok: true, id, bilangan_hari: hari, mesej: 'Cuti ditambah.' };
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* abaikan */ }
     throw err;
@@ -211,29 +233,44 @@ export async function createHoliday(input, actorId) {
   }
 }
 
-// Kemaskini cuti (separa). Jika nama/tarikh berubah, semak konflik unik.
+// Kemaskini cuti (separa). Julat akhir disahkan terhadap nilai sedia ada
+// supaya tarikh_tamat tidak pernah lebih awal daripada tarikh_mula.
 export async function updateHoliday(id, perubahan, actorId) {
   const hid = parseInt(id, 10);
   if (!Number.isFinite(hid)) { const e = new Error('ID cuti tidak sah'); e.status = 400; throw e; }
-  const tarikh = normIsoDate(perubahan && perubahan.tarikh);
+  const mula = normIsoDate(perubahan && perubahan.tarikh_mula);
+  const tamat = normIsoDate(perubahan && perubahan.tarikh_tamat);
   const nama = s(perubahan && perubahan.nama_cuti);
   const catatan = perubahan && Object.prototype.hasOwnProperty.call(perubahan, 'catatan') ? s(perubahan.catatan) : undefined;
   const aktif = perubahan && (perubahan.aktif === true || perubahan.aktif === false) ? perubahan.aktif : undefined;
 
-  if (!tarikh && !nama && catatan === undefined && aktif === undefined) {
+  if (!mula && !tamat && !nama && catatan === undefined && aktif === undefined) {
     const e = new Error('Tiada medan untuk dikemaskini'); e.status = 400; throw e;
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const semasa = await client.query('SELECT 1 FROM holidays WHERE id=$1', [hid]);
+    const semasa = await client.query(
+      `SELECT to_char(tarikh_mula,'YYYY-MM-DD')  AS tarikh_mula,
+              to_char(tarikh_tamat,'YYYY-MM-DD') AS tarikh_tamat
+         FROM holidays WHERE id=$1`,
+      [hid]
+    );
     if (semasa.rowCount === 0) { const e = new Error('Cuti tidak dijumpai'); e.status = 404; throw e; }
+
+    // Julat berkesan (gabung perubahan + nilai sedia ada) untuk validasi.
+    const mulaAkhir = mula || semasa.rows[0].tarikh_mula;
+    const tamatAkhir = tamat || semasa.rows[0].tarikh_tamat;
+    if (tamatAkhir < mulaAkhir) {
+      const e = new Error('Tarikh tamat tidak boleh lebih awal daripada tarikh mula'); e.status = 400; throw e;
+    }
 
     const setParts = [];
     const params = [];
-    if (tarikh)  { params.push(tarikh);   setParts.push(`tarikh=$${params.length}`); }
-    if (nama)    { params.push(nama);     setParts.push(`nama_cuti=$${params.length}`); }
+    if (mula)  { params.push(mula);  setParts.push(`tarikh_mula=$${params.length}`); }
+    if (tamat) { params.push(tamat); setParts.push(`tarikh_tamat=$${params.length}`); }
+    if (nama)  { params.push(nama);  setParts.push(`nama_cuti=$${params.length}`); }
     if (catatan !== undefined) { params.push(catatan || null); setParts.push(`catatan=$${params.length}`); }
     if (aktif !== undefined)   { params.push(aktif); setParts.push(`aktif=$${params.length}`); }
 
@@ -242,12 +279,12 @@ export async function updateHoliday(id, perubahan, actorId) {
       await client.query(`UPDATE holidays SET ${setParts.join(', ')} WHERE id=$${params.length}`, params);
     } catch (err) {
       if (err && err.code === '23505') {
-        const e = new Error('Cuti pada tarikh & nama ini sudah wujud'); e.status = 409; throw e;
+        const e = new Error('Cuti pada julat tarikh & nama ini sudah wujud'); e.status = 409; throw e;
       }
       throw err;
     }
 
-    await audit(actorId, 'UBAH_CUTI', `Cuti #${hid}: ${[tarikh, nama, catatan !== undefined ? 'catatan' : '', aktif !== undefined ? 'aktif' : ''].filter(Boolean).join(', ')}`, client);
+    await audit(actorId, 'UBAH_CUTI', `Cuti #${hid}: ${[mula, tamat, nama, catatan !== undefined ? 'catatan' : '', aktif !== undefined ? 'aktif' : ''].filter(Boolean).join(', ')}`, client);
     await client.query('COMMIT');
     return { ok: true, mesej: 'Cuti dikemaskini.' };
   } catch (err) {
@@ -265,10 +302,16 @@ export async function deleteHoliday(id, actorId) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const r = await client.query('DELETE FROM holidays WHERE id=$1 RETURNING tarikh, nama_cuti', [hid]);
+    const r = await client.query(
+      `DELETE FROM holidays WHERE id=$1
+        RETURNING to_char(tarikh_mula,'YYYY-MM-DD')  AS tarikh_mula,
+                  to_char(tarikh_tamat,'YYYY-MM-DD') AS tarikh_tamat,
+                  nama_cuti`,
+      [hid]
+    );
     if (r.rowCount === 0) { const e = new Error('Cuti tidak dijumpai'); e.status = 404; throw e; }
     const x = r.rows[0];
-    await audit(actorId, 'PADAM_CUTI', `Cuti #${hid}: ${x.tarikh} ${x.nama_cuti}`, client);
+    await audit(actorId, 'PADAM_CUTI', `Cuti #${hid}: ${x.nama_cuti} (${x.tarikh_mula} → ${x.tarikh_tamat})`, client);
     await client.query('COMMIT');
     return { ok: true, dibuang: r.rowCount, mesej: 'Cuti dipadam.' };
   } catch (err) {

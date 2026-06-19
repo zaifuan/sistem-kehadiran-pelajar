@@ -46,7 +46,7 @@ superadminRouter.get('/holidays', async (req, res) => {
   }
 });
 
-// POST /api/superadmin/holidays  { tarikh, nama_cuti, catatan?, aktif? }
+// POST /api/superadmin/holidays  { tarikh_mula, tarikh_tamat, nama_cuti, catatan?, aktif? }
 superadminRouter.post('/holidays', async (req, res) => {
   try {
     res.status(201).json(await createHoliday(req.body || {}, actorId(req)));
@@ -55,7 +55,7 @@ superadminRouter.post('/holidays', async (req, res) => {
   }
 });
 
-// PATCH /api/superadmin/holidays/:id  { tarikh?, nama_cuti?, catatan?, aktif? }
+// PATCH /api/superadmin/holidays/:id  { tarikh_mula?, tarikh_tamat?, nama_cuti?, catatan?, aktif? }
 superadminRouter.patch('/holidays/:id', async (req, res) => {
   try {
     res.json(await updateHoliday(req.params.id, req.body || {}, actorId(req)));

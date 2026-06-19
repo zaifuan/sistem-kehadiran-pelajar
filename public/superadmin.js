@@ -191,7 +191,9 @@ async function simpanEdit() {
 //  3) TETAPAN CUTI
 // ════════════════════════════════════════════════════════════
 function initCuti() {
-  if (!$('#cuti-tarikh').value) $('#cuti-tarikh').value = localIso();
+  const hariIni = localIso();
+  if (!$('#cuti-mula').value) $('#cuti-mula').value = hariIni;
+  if (!$('#cuti-tamat').value) $('#cuti-tamat').value = hariIni;
   loadCuti();
 }
 async function loadCuti() {
@@ -207,17 +209,23 @@ async function loadCuti() {
       const statusPill = c.aktif
         ? '<span class="badge-status on">Aktif</span>'
         : '<span class="badge-status off">Nyahaktif</span>';
+      const hari = Number(c.bilangan_hari) || 1;
+      const julat = `<span class="cuti-tarikh num">${esc(fmtTarikh(c.tarikh_mula))}</span>
+            <span class="cuti-arrow">→</span>
+            <span class="cuti-tarikh num">${esc(fmtTarikh(c.tarikh_tamat))}</span>
+            <span class="cuti-hari num">${hari} hari</span>`;
+      const namaPadam = `${c.nama_cuti} (${fmtTarikh(c.tarikh_mula)} → ${fmtTarikh(c.tarikh_tamat)})`;
       return `<div class="card">
         <div class="row-card">
-          <div class="cuti-tarikh num">${esc(fmtTarikh(c.tarikh))}</div>
           <div class="cuti-main">
             <div class="cuti-nama">${esc(c.nama_cuti)}</div>
+            <div class="cuti-julat">${julat}</div>
             ${cat}
           </div>
           ${statusPill}
           <div class="row-actions">
             <button class="btn ghost btn-sm" data-toggle="${c.id}" data-aktif="${c.aktif ? 1 : 0}" type="button">${c.aktif ? 'Nyahaktif' : 'Aktif'}</button>
-            <button class="btn ghost btn-sm" data-del="${c.id}" data-nama="${esc(c.nama_cuti)} (${esc(fmtTarikh(c.tarikh))})" type="button">Padam</button>
+            <button class="btn ghost btn-sm" data-del="${c.id}" data-nama="${esc(namaPadam)}" type="button">Padam</button>
           </div>
         </div>
       </div>`;
@@ -232,16 +240,18 @@ function bindCutiActions(box) {
   box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => padamCuti(b.dataset.del, b.dataset.nama)));
 }
 async function tambahCuti() {
-  const tarikh = $('#cuti-tarikh').value;
+  const mula = $('#cuti-mula').value;
+  const tamat = $('#cuti-tamat').value;
   const nama = $('#cuti-nama').value.trim();
   const catatan = $('#cuti-catatan').value.trim();
-  if (!tarikh || !nama) { toast('Tarikh dan nama cuti wajib.', 'bad'); return; }
+  if (!mula || !tamat || !nama) { toast('Tarikh mula, tarikh tamat dan nama cuti wajib.', 'bad'); return; }
+  if (tamat < mula) { toast('Tarikh tamat tidak boleh lebih awal daripada tarikh mula.', 'bad'); return; }
   const btn = $('#btn-tambah-cuti');
   btn.disabled = true; btn.textContent = 'Menambah…';
   try {
     await fetchJSON('/api/superadmin/holidays', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tarikh, nama_cuti: nama, catatan: catatan || undefined }),
+      body: JSON.stringify({ tarikh_mula: mula, tarikh_tamat: tamat, nama_cuti: nama, catatan: catatan || undefined }),
     });
     $('#cuti-nama').value = ''; $('#cuti-catatan').value = '';
     toast('Cuti ditambah.', 'ok');

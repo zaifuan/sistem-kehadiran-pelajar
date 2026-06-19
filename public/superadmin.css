@@ -153,10 +153,15 @@ main { padding: 14px 16px calc(28px + env(safe-area-inset-bottom)); max-width: 8
 .btn-sm { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
 
 /* ---------- Kad cuti ---------- */
-.cuti-tarikh { flex: none; min-width: 92px; padding: 7px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); text-align: center; font-weight: 740; color: var(--primary-dark); font-size: 14px; }
 .cuti-main { flex: 1; min-width: 0; }
 .cuti-nama { font-size: 14.5px; font-weight: 600; }
+.cuti-julat { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 3px; font-size: 13px; color: var(--ink-soft); }
+.cuti-tarikh { font-weight: 700; color: var(--primary-dark); }
+.cuti-arrow { color: var(--ink-faint); }
+.cuti-hari { flex: none; font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--primary-dark); }
 .cuti-catatan { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+/* Dua medan tarikh berkongsi lebar sama rata dalam form-card */
+.field-row > .field { flex: 1; min-width: 0; }
 
 /* ---------- Banner bahaya ---------- */
 .danger-banner {
