@@ -110,6 +110,63 @@ async function loadSistem() {
   }
 }
 
+// ── Google Sheet Sync (Fasa 10) ──
+// Cetus enjin sync sedia ada via /api/superadmin/sync (SUPER_ADMIN sahaja).
+async function syncSheet() {
+  const btn = $('#btn-sync');
+  const box = $('#sync-hasil');
+  btn.disabled = true; btn.textContent = 'Menyegerak…';
+  box.hidden = false;
+  box.className = 'sync-hasil';
+  box.innerHTML = '<div class="loading"><div class="spinner"></div>Sedang sync kedua-dua Google Sheet… Jangan tutup halaman.</div>';
+  try {
+    const d = await fetchJSON('/api/superadmin/sync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    });
+    renderSyncHasil(box, d);
+    if (d.status === 'berjaya') toast('Sync selesai.', 'ok');
+    else if (d.status === 'gagal') toast('Sync gagal.', 'bad');
+    else toast('Sync selesai dengan amaran.', 'ok');
+  } catch (err) {
+    box.className = 'sync-hasil err';
+    box.innerHTML = `<div class="sync-head"><span class="badge-status off">Gagal</span></div>
+      <div class="sync-meta">${esc(err.message || 'Ralat tidak diketahui semasa sync.')}</div>`;
+    toast(err.message || 'Sync gagal.', 'bad');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Sync Google Sheet';
+  }
+}
+function renderSyncHasil(box, d) {
+  const st = d.status || 'tidak diketahui';
+  const cls = st === 'berjaya' ? 'ok' : (st === 'gagal' ? 'err' : 'warn');
+  const pill = st === 'berjaya' ? 'on' : (st === 'gagal' ? 'off' : 'warn');
+  const label = st === 'berjaya' ? 'Berjaya' : (st === 'gagal' ? 'Gagal' : 'Sebahagian berjaya');
+  box.className = 'sync-hasil ' + cls;
+  const langkah = Array.isArray(d.langkah) ? d.langkah : [];
+  const steps = langkah.length
+    ? langkah.map((l) => {
+        const ls = l.status || '';
+        const lc = ls === 'berjaya' ? 'on' : (ls === 'gagal' ? 'off' : 'warn');
+        const bil = (l.bil != null && l.bil !== '') ? `<span class="sync-step-bil num">${esc(l.bil)}</span>` : '';
+        const msg = l.mesej ? `<div class="sync-step-msg">${esc(l.mesej)}</div>` : '';
+        return `<div class="sync-step">
+          <span class="badge-status ${lc}">${esc(ls || '—')}</span>
+          <div class="sync-step-main"><div class="sync-step-nama">${esc(l.nama)}</div>${msg}</div>
+          ${bil}
+        </div>`;
+      }).join('')
+    : '<div class="empty">Tiada butiran langkah daripada enjin sync.</div>';
+  box.innerHTML = `
+    <div class="sync-head">
+      <span class="badge-status ${pill}">${esc(label)}</span>
+      <div class="sync-meta">
+        <div><span class="lbl">Mula:</span> <span class="num">${fmtMasa(d.mula)}</span></div>
+        <div><span class="lbl">Tamat:</span> <span class="num">${fmtMasa(d.tamat)}</span></div>
+      </div>
+    </div>
+    <div class="sync-steps">${steps}</div>`;
+}
+
 // ════════════════════════════════════════════════════════════
 //  2) PENGURUSAN AKAUN
 // ════════════════════════════════════════════════════════════
@@ -392,6 +449,9 @@ async function init() {
   $('#modal-batal').addEventListener('click', tutupEdit);
   $('#modal-simpan').addEventListener('click', simpanEdit);
   $('#m-aktif').addEventListener('change', (e) => { $('#m-aktif-label').textContent = e.target.checked ? 'Aktif' : 'Nyahaktif'; });
+
+  // Google Sheet Sync
+  $('#btn-sync').addEventListener('click', syncSheet);
 
   // Cuti
   $('#btn-tambah-cuti').addEventListener('click', tambahCuti);

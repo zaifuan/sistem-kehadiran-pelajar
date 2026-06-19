@@ -13,6 +13,7 @@
 // ════════════════════════════════════════════════════════════
 import { pool } from '../db/pool.js';
 import { hashKataLaluan } from './authService.js';
+import { runSync } from './syncService.js';
 
 function s(v) {
   return v === undefined || v === null ? '' : String(v).trim();
@@ -456,6 +457,23 @@ export async function systemSummary() {
     status_telegram: 'Akan datang Fasa 10',
     status_google_sheet_sync: 'Akan datang Fasa 11',
   };
+}
+
+// ════════════════════════════════════════════════════════════
+//  5) GOOGLE SHEET SYNC (Fasa 10)
+//  Wrapper SUPER_ADMIN untuk enjin sync sedia ada (runSync).
+//  TIDAK mengubah enjin — hanya cetus, audit & pulangkan ringkasan.
+//  runSync() menyegerak kedua-dua Google Sheet:
+//    • master pelajar/guru kelas/pembantu  • data kehadiran lama GAS
+//  Pulangan: { ok, status, mula, tamat, langkah[] }. `status` =
+//  'berjaya' | 'sebahagian' | 'gagal' supaya UI boleh papar keputusan
+//  walaupun sync separa/gagal (ok kekal true selagi cetusan berjaya).
+// ════════════════════════════════════════════════════════════
+export async function runSheetSync(actorId) {
+  const hasil = await runSync();
+  const bilLangkah = Array.isArray(hasil.langkah) ? hasil.langkah.length : 0;
+  await audit(actorId, 'SYNC_SHEET', `Sync Google Sheet: ${hasil.status} (${bilLangkah} langkah)`);
+  return { ok: true, ...hasil };
 }
 
 // Senarai kod kelas aktif untuk dropdown reset (selaras /api/admin/classes).

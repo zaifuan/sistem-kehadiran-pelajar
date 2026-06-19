@@ -8,7 +8,7 @@ import {
   listUsers, updateUser,
   listHolidays, createHoliday, updateHoliday, deleteHoliday,
   resetAttendanceClass, resetAttendanceDay,
-  systemSummary, listActiveClassKod,
+  systemSummary, listActiveClassKod, runSheetSync,
 } from '../services/superadminService.js';
 
 export const superadminRouter = Router();
@@ -108,6 +108,17 @@ superadminRouter.get('/summary', async (req, res) => {
 superadminRouter.get('/classes', async (req, res) => {
   try {
     res.json(await listActiveClassKod());
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// ── 5) Google Sheet Sync (SUPER_ADMIN sahaja — Fasa 10) ──
+// POST /api/superadmin/sync — cetus enjin sync sedia ada (dua Google Sheet).
+// Hanya SUPER_ADMIN (dikuatkuasa requireRole di app.js; ADMIN → 403).
+superadminRouter.post('/sync', async (req, res) => {
+  try {
+    res.json(await runSheetSync(actorId(req)));
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
   }
