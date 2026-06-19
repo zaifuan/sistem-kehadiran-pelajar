@@ -21,32 +21,43 @@
     <p id="tarikh-strip" class="tarikh-strip num">Memuatkan…</p>
   </header>
 
-  <nav class="seg" role="tablist" aria-label="Paparan">
+  <nav class="seg seg-scroll" role="tablist" aria-label="Paparan">
     <button class="seg-btn is-active" type="button" data-tab="harian" role="tab">Hari Ini</button>
+    <button class="seg-btn" type="button" data-tab="belum" role="tab">Belum Isi</button>
+    <button class="seg-btn" type="button" data-tab="tidakhadir" role="tab">Tidak Hadir</button>
     <button class="seg-btn" type="button" data-tab="rekod" role="tab">Rekod Lepas</button>
+    <button class="seg-btn" type="button" data-tab="peratus" role="tab">Peratus</button>
+    <button class="seg-btn" type="button" data-tab="kelas" role="tab">Kelas &amp; Pelajar</button>
   </nav>
 
   <main>
-    <!-- TAB 1: HARI INI -->
+    <!-- ───── 1) HARI INI ───── -->
     <section id="tab-harian" class="tab is-active" aria-label="Ringkasan hari ini">
-      <!-- Hero peratus + progres isi kelas -->
-      <div id="hero" class="hero">
-        <div class="loading"><div class="spinner"></div>Memuatkan ringkasan…</div>
-      </div>
-
-      <!-- Kad statistik -->
+      <div id="hero" class="hero"><div class="loading"><div class="spinner"></div>Memuatkan ringkasan…</div></div>
       <div id="stat-grid" class="stat-grid" hidden></div>
-
-      <!-- Senarai Belum Isi -->
       <div class="block">
-        <div class="block-head">
-          <h2>Belum Isi <span id="belum-kira" class="pill warn" hidden>0</span></h2>
-        </div>
-        <div id="belum-body" class="list"></div>
+        <div class="block-head"><h2>Kelas Sudah Isi <span id="sudah-kira" class="pill ok" hidden>0</span></h2></div>
+        <div id="sudah-body" class="list"></div>
       </div>
     </section>
 
-    <!-- TAB 2: REKOD LEPAS -->
+    <!-- ───── 2) BELUM ISI ───── -->
+    <section id="tab-belum" class="tab" aria-label="Kelas belum isi" hidden>
+      <div class="day-strip" id="belum-tarikh"></div>
+      <div class="block">
+        <div class="block-head"><h2>Belum Isi Kehadiran <span id="belum-kira" class="pill warn" hidden>0</span></h2></div>
+        <div id="belum-body" class="list"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+      </div>
+    </section>
+
+    <!-- ───── 3) TIDAK HADIR ───── -->
+    <section id="tab-tidakhadir" class="tab" aria-label="Pelajar tidak hadir hari ini" hidden>
+      <div class="day-strip" id="th-tarikh"></div>
+      <div id="th-ringkasan" class="rekod-ringkasan" hidden></div>
+      <div id="th-body" class="list"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+    </section>
+
+    <!-- ───── 4) REKOD LEPAS ───── -->
     <section id="tab-rekod" class="tab" aria-label="Rekod lepas" hidden>
       <div class="filter-card">
         <div class="field">
@@ -55,21 +66,42 @@
         </div>
         <div class="field">
           <label for="f-kelas">Kelas</label>
-          <select id="f-kelas" class="inp">
-            <option value="">Semua kelas</option>
-          </select>
+          <select id="f-kelas" class="inp"><option value="">Semua kelas</option></select>
         </div>
       </div>
-
       <div id="rekod-ringkasan" class="rekod-ringkasan" hidden></div>
-      <div id="rekod-body" class="list">
-        <p class="hint">Pilih tarikh untuk melihat rekod kehadiran.</p>
+      <div id="rekod-body" class="list"><p class="hint">Pilih tarikh untuk melihat rekod kehadiran.</p></div>
+    </section>
+
+    <!-- ───── 5) PERATUS ───── -->
+    <section id="tab-peratus" class="tab" aria-label="Peratus mingguan dan bulanan" hidden>
+      <p class="formula">Formula GAS disahkan: Σ Hadir ÷ Σ Jumlah × 100</p>
+      <div class="filter-card one">
+        <div class="field">
+          <label for="p-kelas">Skop</label>
+          <select id="p-kelas" class="inp"><option value="">Sekolah (semua kelas)</option></select>
+        </div>
+      </div>
+      <div class="block">
+        <div class="block-head"><h2>Peratus Mingguan</h2></div>
+        <div id="wk-body" class="list"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+      </div>
+      <div class="block">
+        <div class="block-head"><h2>Peratus Bulanan</h2></div>
+        <div id="mo-body" class="list"></div>
+      </div>
+    </section>
+
+    <!-- ───── 6) KELAS & PELAJAR ───── -->
+    <section id="tab-kelas" class="tab" aria-label="Senarai kelas dan pelajar" hidden>
+      <div class="block">
+        <div class="block-head"><h2>Kelas &amp; Pelajar <span id="kelas-kira" class="pill" hidden>0</span></h2></div>
+        <div id="kelas-body" class="list"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
       </div>
     </section>
   </main>
 
   <div id="toast" class="toast" hidden></div>
-
   <script src="/admin.js"></script>
 </body>
 </html>

@@ -57,6 +57,21 @@ function deriveTingkatan(kod) {
   return m ? 'T' + m[1] : null;
 }
 
+// ── Normalisasi kod kelas (Fasa 8.4.1) ──
+// Sheet#1 (direktori) mengunci kelas pada lajur SINGKATAN. Bagi kelas STAM,
+// singkatannya 'LULU'/'MARJAN' — berbeza daripada kod kanonik yang digunakan
+// Sheet#2 (METADATA_KELAS/SENARAI_PELAJAR/DATA_KEHADIRAN) dan portal guru,
+// iaitu 'STAMLULU'/'STAMMARJAN'. Tanpa pemetaan, sync mencipta baris kelas
+// pendua (LULU/MARJAN, tingkatan NULL, tiada pelajar/kehadiran).
+// Petakan alias di SETIAP titik masuk supaya HANYA satu kod kanonik wujud.
+const ALIAS_KELAS = { LULU: 'STAMLULU', MARJAN: 'STAMMARJAN' };
+function normKod(kod) {
+  const raw = s(kod);
+  const key = raw.toUpperCase();
+  if (Object.prototype.hasOwnProperty.call(ALIAS_KELAS, key)) return ALIAS_KELAS[key];
+  return raw; // kod lain tidak diubah
+}
+
 // ════════════════════════════════════════════════════════════
 //  Helper DB
 // ════════════════════════════════════════════════════════════
@@ -67,7 +82,8 @@ async function logSync(client, { arah = 'sheet->db', jenis, status, bil = null, 
   );
 }
 
-async function ensureClass(client, kod) {
+async function ensureClass(client, kodRaw) {
+  const kod = normKod(kodRaw);
   if (!kod) return;
   await client.query(
     `INSERT INTO classes (kod, nama, tingkatan, status) VALUES ($1, $1, $2, 'aktif')
@@ -113,7 +129,7 @@ async function importMetadataKelas(client, rows) {
   let n = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] || [];
-    const kod = s(r[cKod]);
+    const kod = normKod(s(r[cKod]));
     if (!kod) continue;
     await client.query(
       `INSERT INTO classes (kod, nama, guru_kelas, tingkatan, status)
@@ -146,7 +162,7 @@ async function importSheet1(client, tabsPelajar) {
       const cPmb = idx['PEMBANTU GURU KELAS'];
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i] || [];
-        const kod = cKod != null ? s(r[cKod]) : '';
+        const kod = cKod != null ? normKod(s(r[cKod])) : '';
         if (!kod) continue;
         const namaKelas = cNama != null ? s(r[cNama]) : '';
         const guru = cGuru != null ? s(r[cGuru]) : '';
@@ -198,7 +214,7 @@ async function importSenaraiPelajar(client, rows) {
   let n = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] || [];
-    const kod = s(r[cKod]);
+    const kod = normKod(s(r[cKod]));
     const nama = s(r[cNama]);
     if (!kod || !nama) continue;
     await ensureClass(client, kod);
@@ -235,7 +251,7 @@ async function importDataKehadiran(client, rows) {
   let n = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] || [];
-    const kelas = s(r[c.kelas]);
+    const kelas = normKod(s(r[c.kelas]));
     const tarikhRaw = s(r[c.tarikh]);
     if (!kelas && !tarikhRaw) continue; // baris kosong
     const tarikh = normTarikh(tarikhRaw);

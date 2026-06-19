@@ -1,7 +1,9 @@
 import { pool } from '../db/pool.js';
+// Fasa 8.4: guna semula formula peratus yang TELAH DISAHKAN (jangan salin/ubah).
+import { weekly as analyticsWeekly, monthly as analyticsMonthly } from './analyticsService.js';
 
 // ════════════════════════════════════════════════════════════
-//  adminService.js — Dashboard Admin Harian (Fasa 6)
+//  adminService.js — Dashboard Admin Harian (Fasa 6) + polish (Fasa 8.4)
 //  BACA SAHAJA dari PostgreSQL. Tiada write-back, tiada Sheet.
 //
 //  Mengekalkan ilham workflow GAS asal:
@@ -42,6 +44,14 @@ function normIsoDate(v) {
 
 function numOrNull(p) { return p === null || p === undefined ? null : Number(p); }
 function s(v) { return v === undefined || v === null ? '' : String(v).trim(); }
+
+// Susunan kumpulan tingkatan untuk paparan (Fasa 8.4.2): T1→T2→…→T5 kemudian STAM.
+// Nota: jika diisih abjad, 'STAM' < 'T1' (didahulukan secara salah); CASE ini
+// memastikan STAM berada di KUMPULAN TERAKHIR. NULL/lain → 99 (paling akhir).
+const ORDER_TINGKATAN = `CASE c.tingkatan
+  WHEN 'T1' THEN 1 WHEN 'T2' THEN 2 WHEN 'T3' THEN 3
+  WHEN 'T4' THEN 4 WHEN 'T5' THEN 5 WHEN 'STAM' THEN 6
+  ELSE 99 END`;
 
 // ════════════════════════════════════════════════════════════
 //  GET /api/admin/today-summary
@@ -123,7 +133,7 @@ export async function missingClasses() {
          SELECT 1 FROM attendance_records r
          WHERE r.class_kod = c.kod AND r.tarikh = $1::date
        )
-     ORDER BY c.tingkatan NULLS LAST, c.kod`,
+     ORDER BY ${ORDER_TINGKATAN}, c.kod`,
     [t.iso]
   );
   const jum = await pool.query(
@@ -141,6 +151,7 @@ export async function missingClasses() {
     kelas: r.rows.map((x) => ({
       kod: x.kod,
       nama: x.nama,
+      tingkatan: x.tingkatan || null,
       guru_kelas: x.guru_kelas || null,
       pembantu_kelas: x.pembantu_kelas || null,
     })),
@@ -168,6 +179,7 @@ export async function records(query = {}) {
     `SELECT
        r.class_kod                         AS kelas,
        c.nama                              AS nama_kelas,
+       c.tingkatan                         AS tingkatan,
        COALESCE(r.guru, c.guru_kelas)      AS guru,
        c.pembantu_kelas                    AS pembantu,
        r.jumlah, r.hadir, r.tidak_hadir, r.wakil, r.peratus,
@@ -186,7 +198,7 @@ export async function records(query = {}) {
      FROM attendance_records r
      LEFT JOIN classes c ON c.kod = r.class_kod
      WHERE r.tarikh = $1::date${kelasFilter}
-     ORDER BY c.tingkatan NULLS LAST, r.class_kod`,
+     ORDER BY ${ORDER_TINGKATAN}, r.class_kod`,
     params
   );
 
@@ -199,6 +211,7 @@ export async function records(query = {}) {
     return {
       kelas: x.kelas,
       nama_kelas: x.nama_kelas,
+      tingkatan: x.tingkatan || null,
       guru: x.guru || null,
       pembantu: x.pembantu || null,
       jumlah: x.jumlah,
@@ -227,5 +240,83 @@ export async function records(query = {}) {
       peratus: sumJum > 0 ? Math.round((sumHadir / sumJum) * 10000) / 100 : null,
     },
     rekod,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+//  FASA 8.4 — Tambahan Page Admin (BACA SAHAJA, PostgreSQL).
+//  Tiada baca/tulis Google Sheet. Formula peratus mingguan/bulanan
+//  DIDELEGASI kepada analyticsService (formula GAS yang disahkan).
+// ════════════════════════════════════════════════════════════
+
+// GET /api/admin/weekly?kelas= — peratus mingguan (sekolah / kelas)
+// Delegasi 100% kepada analyticsService.weekly (Σhadir ÷ Σjumlah × 100, Isnin–Jumaat).
+export async function weekly(query = {}) {
+  return analyticsWeekly(query || {});
+}
+
+// GET /api/admin/monthly?kelas=&tahun= — peratus bulanan (sekolah / kelas)
+// Delegasi 100% kepada analyticsService.monthly (Σhadir ÷ Σjumlah × 100).
+export async function monthly(query = {}) {
+  return analyticsMonthly(query || {});
+}
+
+// GET /api/admin/classes — senarai kelas + bilangan pelajar (untuk "Kelas & Pelajar")
+export async function classesWithCounts() {
+  const r = await pool.query(
+    `SELECT c.kod, c.nama, c.tingkatan, c.guru_kelas, c.pembantu_kelas,
+        COALESCE((SELECT COUNT(*) FROM students s
+                  WHERE s.class_kod = c.kod AND s.status = 'aktif'), 0)::int AS jumlah_pelajar
+     FROM classes c
+     WHERE c.status = 'aktif'
+     ORDER BY ${ORDER_TINGKATAN}, c.kod`
+  );
+  return {
+    ok: true,
+    jumlah: r.rowCount,
+    kelas: r.rows.map((x) => ({
+      kod: x.kod,
+      nama: x.nama,
+      tingkatan: x.tingkatan || null,
+      guru_kelas: x.guru_kelas || null,
+      pembantu_kelas: x.pembantu_kelas || null,
+      jumlah_pelajar: x.jumlah_pelajar,
+    })),
+  };
+}
+
+// GET /api/admin/classes/:kod/students — senarai pelajar bagi satu kelas
+export async function classStudents(kodRaw) {
+  const kod = s(kodRaw).toUpperCase();
+  const info = await pool.query(
+    `SELECT kod, nama, tingkatan, guru_kelas, pembantu_kelas, status
+     FROM classes WHERE kod = $1`,
+    [kod]
+  );
+  if (info.rowCount === 0) {
+    const err = new Error(`Kelas '${kod}' tidak dijumpai`);
+    err.status = 404;
+    throw err;
+  }
+  const st = await pool.query(
+    `SELECT nama, status FROM students
+     WHERE class_kod = $1
+     ORDER BY (status = 'aktif') DESC, nama`,
+    [kod]
+  );
+  const c = info.rows[0];
+  const aktif = st.rows.filter((x) => x.status === 'aktif').length;
+  return {
+    ok: true,
+    kelas: {
+      kod: c.kod,
+      nama: c.nama,
+      tingkatan: c.tingkatan || null,
+      guru_kelas: c.guru_kelas || null,
+      pembantu_kelas: c.pembantu_kelas || null,
+    },
+    jumlah_pelajar: aktif,
+    jumlah_semua: st.rowCount,
+    pelajar: st.rows.map((x) => ({ nama: x.nama, status: x.status })),
   };
 }

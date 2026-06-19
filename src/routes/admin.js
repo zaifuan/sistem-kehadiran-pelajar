@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { todaySummary, missingClasses, records } from '../services/adminService.js';
+import {
+  todaySummary, missingClasses, records,
+  weekly, monthly, classesWithCounts, classStudents,
+} from '../services/adminService.js';
 import { listUsers } from '../services/authService.js';
 import { listAssignments, assignKelas, unassignKelas } from '../services/assignmentService.js';
 
@@ -27,6 +30,44 @@ adminRouter.get('/missing-classes', async (req, res) => {
 adminRouter.get('/records', async (req, res) => {
   try {
     res.json(await records(req.query || {}));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// ── Fasa 8.4 — Polish Page Admin (baca sahaja; /api/admin/* dilindungi ADMIN+SUPER_ADMIN) ──
+
+// GET /api/admin/weekly?kelas= — peratus mingguan (formula GAS disahkan, didelegasi)
+adminRouter.get('/weekly', async (req, res) => {
+  try {
+    res.json(await weekly(req.query || {}));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// GET /api/admin/monthly?kelas=&tahun= — peratus bulanan (formula GAS disahkan, didelegasi)
+adminRouter.get('/monthly', async (req, res) => {
+  try {
+    res.json(await monthly(req.query || {}));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// GET /api/admin/classes — senarai kelas + bilangan pelajar
+adminRouter.get('/classes', async (req, res) => {
+  try {
+    res.json(await classesWithCounts());
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// GET /api/admin/classes/:kod/students — senarai pelajar bagi kelas dipilih
+adminRouter.get('/classes/:kod/students', async (req, res) => {
+  try {
+    res.json(await classStudents(req.params.kod));
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
   }
