@@ -448,6 +448,16 @@ async function refresh() {
 
 // ── Init ──
 document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+// Tunjuk link Super Admin hanya untuk SUPER_ADMIN (Fasa 9).
+(async function initSuperadminLink() {
+  try {
+    const me = await fetchJSON('/api/auth/me');
+    if (me && me.user && me.user.role === 'SUPER_ADMIN') {
+      const btn = $('#btn-superadmin');
+      if (btn) btn.hidden = false;
+    }
+  } catch (_) { /* bukan SUPER_ADMIN atau belum login → link kekal tersembunyi */ }
+})();
 $('#btn-refresh').addEventListener('click', refresh);
 $('#f-tarikh').addEventListener('change', loadRekod);
 $('#f-kelas').addEventListener('change', loadRekod);

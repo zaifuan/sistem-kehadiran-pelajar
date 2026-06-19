@@ -180,3 +180,24 @@ CREATE TABLE IF NOT EXISTS teacher_class_assignments (
 );
 CREATE INDEX IF NOT EXISTS idx_tca_user  ON teacher_class_assignments (user_id);
 CREATE INDEX IF NOT EXISTS idx_tca_kelas ON teacher_class_assignments (class_kod);
+
+-- ════════════════════════════════════════════════════════════
+--  FASA 9 — Page Super Admin (additif)
+--  Hanya menambah jadual `holidays`. Tiada perubahan pada jadual data
+--  sedia ada (attendance_records dll). Idempotent.
+-- ════════════════════════════════════════════════════════════
+
+-- Tetapan cuti — diurus oleh Super Admin. tarikh + nama_cuti unik
+-- (satu tarikh boleh ada beberapa cuti berbeza nama, tetapi pasangan
+--  tarikh+nama tidak boleh berulang). aktif = false → nyahaktif (soft).
+CREATE TABLE IF NOT EXISTS holidays (
+  id         SERIAL PRIMARY KEY,
+  tarikh     DATE NOT NULL,
+  nama_cuti  TEXT NOT NULL,
+  catatan    TEXT,
+  aktif      BOOLEAN DEFAULT TRUE,
+  dicipta_pada TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tarikh, nama_cuti)
+);
+CREATE INDEX IF NOT EXISTS idx_holidays_tarikh ON holidays (tarikh);
+CREATE INDEX IF NOT EXISTS idx_holidays_aktif  ON holidays (aktif);

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#7a1c12" />
+  <title>Super Admin — Kawalan Sistem</title>
+  <link rel="stylesheet" href="/superadmin.css" />
+</head>
+<body>
+  <header class="topbar sa">
+    <div class="topbar-row">
+      <div class="ttl">
+        <p class="eyebrow">SABK Maahad Al-Khair Lil Banat</p>
+        <h1>Super Admin — Kawalan Sistem</h1>
+      </div>
+      <div class="topbar-actions">
+        <button id="btn-refresh" class="iconbtn" type="button" aria-label="Muat semula">
+          <span class="refresh-ico" aria-hidden="true">↻</span>
+        </button>
+        <a id="btn-admin" class="iconbtn" href="/admin" title="Ke Dashboard Admin">◧</a>
+      </div>
+    </div>
+    <p id="user-strip" class="tarikh-strip num">Memuatkan…</p>
+  </header>
+
+  <nav class="seg seg-scroll" role="tablist" aria-label="Kawalan">
+    <button class="seg-btn is-active" type="button" data-tab="sistem" role="tab">Sistem</button>
+    <button class="seg-btn" type="button" data-tab="akaun" role="tab">Akaun</button>
+    <button class="seg-btn" type="button" data-tab="cuti" role="tab">Cuti</button>
+    <button class="seg-btn danger-tab" type="button" data-tab="reset" role="tab">Reset</button>
+  </nav>
+
+  <main>
+    <!-- ───── 1) MAKLUMAT SISTEM ───── -->
+    <section id="tab-sistem" class="tab is-active" aria-label="Maklumat sistem">
+      <div id="sa-stats" class="stat-grid"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+      <div class="block">
+        <div class="block-head"><h2>Integrasi</h2></div>
+        <div id="sa-integrasi" class="list"></div>
+      </div>
+      <p class="hint">Status integrasi bersifat info semasa. Butiran penuh akan dibina pada fasa berikut.</p>
+    </section>
+
+    <!-- ───── 2) PENGURUSAN AKAUN ───── -->
+    <section id="tab-akaun" class="tab" aria-label="Pengurusan akaun" hidden>
+      <div class="block">
+        <div class="block-head"><h2>Akaun Pengguna <span id="akaun-kira" class="pill" hidden>0</span></h2></div>
+        <div id="akaun-body" class="list"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+      </div>
+      <p class="hint">Kata laluan di-hash dengan argon2id dan tidak dipaparkan.</p>
+    </section>
+
+    <!-- ───── 3) TETAPAN CUTI ───── -->
+    <section id="tab-cuti" class="tab" aria-label="Tetapan cuti" hidden>
+      <div class="block">
+        <div class="block-head"><h2>Tambah Cuti</h2></div>
+        <div class="card form-card">
+          <div class="field">
+            <label for="cuti-tarikh">Tarikh</label>
+            <input id="cuti-tarikh" type="date" class="inp num" />
+          </div>
+          <div class="field">
+            <label for="cuti-nama">Nama Cuti</label>
+            <input id="cuti-nama" type="text" class="inp" placeholder="cth: Hari Kebangsaan" maxlength="120" />
+          </div>
+          <div class="field">
+            <label for="cuti-catatan">Catatan</label>
+            <input id="cuti-catatan" type="text" class="inp" placeholder="cth: cuti umum" maxlength="240" />
+          </div>
+          <button id="btn-tambah-cuti" class="btn primary" type="button">Tambah Cuti</button>
+        </div>
+      </div>
+      <div class="block">
+        <div class="block-head"><h2>Senarai Cuti <span id="cuti-kira" class="pill" hidden>0</span></h2></div>
+        <div id="cuti-body" class="list"><div class="loading"><div class="spinner"></div>Memuatkan…</div></div>
+      </div>
+    </section>
+
+    <!-- ───── 4) RESET KEHADIRAN (DANGER) ───── -->
+    <section id="tab-reset" class="tab" aria-label="Reset kehadiran" hidden>
+      <div class="danger-banner">
+        <b>⚠ Zon Bahaya</b>
+        <span>Tindakan di bawah memadam rekod kehadiran secara kekal. Sahkan dengan teliti.</span>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><h2>Reset Satu Kelas</h2></div>
+        <div class="card form-card danger">
+          <div class="field">
+            <label for="r1-tarikh">Tarikh</label>
+            <input id="r1-tarikh" type="date" class="inp num" />
+          </div>
+          <div class="field">
+            <label for="r1-kelas">Kelas</label>
+            <select id="r1-kelas" class="inp"><option value="">— Pilih kelas —</option></select>
+          </div>
+          <button id="btn-reset-kelas" class="btn danger" type="button">Reset Kelas Ini</button>
+          <p class="field-note">Hanya rekod kelas + tarikh ini dipadam. Kelas lain tidak terjejas.</p>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><h2>Reset Semua Kelas (Satu Tarikh)</h2></div>
+        <div class="card form-card danger">
+          <div class="field">
+            <label for="r2-tarikh">Tarikh</label>
+            <input id="r2-tarikh" type="date" class="inp num" />
+          </div>
+          <div class="field">
+            <label for="r2-sahan">Taip <b>SAHKAN</b> untuk membenarkan</label>
+            <input id="r2-sahan" type="text" class="inp" autocomplete="off" placeholder="SAHKAN" />
+          </div>
+          <button id="btn-reset-hari" class="btn danger" type="button">Reset Semua Kelas Tarikh Ini</button>
+          <p class="field-note">Semua rekod kehadiran untuk tarikh ini dipadam. Tidak boleh diundur.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ── Modal edit akaun ── -->
+  <div id="modal-edit" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head"><h3>Edit Akaun</h3><button id="modal-close" class="modal-x" type="button">×</button></div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="m-username">Username</label>
+          <input id="m-username" type="text" class="inp" maxlength="40" />
+        </div>
+        <div class="field">
+          <label for="m-nama">Nama</label>
+          <input id="m-nama" type="text" class="inp" maxlength="120" />
+        </div>
+        <div class="field">
+          <label for="m-password">Kata Laluan Baharu <span class="lbl-opt">(kosongkan jika tidak ubah)</span></label>
+          <input id="m-password" type="password" class="inp" autocomplete="new-password" placeholder="min 8 aksara" />
+        </div>
+        <div class="field-row">
+          <label class="switch">
+            <input id="m-aktif" type="checkbox" />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span id="m-aktif-label">Aktif</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="modal-batal" class="btn ghost" type="button">Batal</button>
+        <button id="modal-simpan" class="btn primary" type="button">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal konfirmasi reset ── -->
+  <div id="modal-konfirm" class="modal" hidden>
+    <div class="modal-card danger-card">
+      <div class="modal-head danger-head"><h3 id="konfirm-judul">Sahkan Reset</h3></div>
+      <div class="modal-body"><p id="konfirm-mesej" class="konfirm-mesej"></p></div>
+      <div class="modal-foot">
+        <button id="konfirm-batal" class="btn ghost" type="button">Batal</button>
+        <button id="konfirm-ok" class="btn danger" type="button">Ya, Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/superadmin.js"></script>
+</body>
+</html>

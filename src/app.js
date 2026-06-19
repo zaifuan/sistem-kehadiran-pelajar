@@ -16,6 +16,7 @@ import { guruRouter } from './routes/guru.js';
 import { adminRouter } from './routes/admin.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
+import { superadminRouter } from './routes/superadmin.js';
 import { requireAuth, requireRole, requirePage } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,10 @@ export function buatApp() {
   app.use('/api/analytics', requireAuth, requireRole('ADMIN', 'SUPER_ADMIN'), analyticsRouter);
   app.use('/api/audit', requireAuth, requireRole('SUPER_ADMIN'), auditRouter);
 
+  // ── API Super Admin (Fasa 9) — SUPER_ADMIN sahaja ──
+  //   requireRole memulangkan 403 untuk ADMIN, 401 untuk tanpa login.
+  app.use('/api/superadmin', requireAuth, requireRole('SUPER_ADMIN'), superadminRouter);
+
   // ── Frontend ──
   // Halaman login terbuka.
   app.get('/login', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'login.html')));
@@ -98,6 +103,20 @@ export function buatApp() {
   // mendahului penyajian fail statik (.html boleh diakses terus jika tidak).
   app.get(['/admin', '/admin.html'], requirePage('ADMIN', 'SUPER_ADMIN'), sendPage('admin.html'));
   app.get(['/analytics', '/analytics.html'], requirePage('ADMIN', 'SUPER_ADMIN'), sendPage('analytics.html'));
+
+  // ── Halaman Super Admin (Fasa 9) — SUPER_ADMIN sahaja ──
+  //   Tanpa login → /login. ADMIN → /admin (bukan halaman akses ditolak
+  //   generik, agar pengguna dibawa ke dashboard mereka sendiri).
+  //   Gunakan handler khusus (selaras corak requirePage di middleware/auth.js).
+  app.get(['/superadmin', '/superadmin.html'], (req, res, next) => {
+    const u = req.session && req.session.user;
+    if (!u) {
+      const next_ = encodeURIComponent(req.originalUrl || '/superadmin');
+      return res.redirect(`/login?next=${next_}`);
+    }
+    if (u.role !== 'SUPER_ADMIN') return res.redirect('/admin');
+    return next();
+  }, sendPage('superadmin.html'));
 
   // Aset awam (CSS/JS, index.html dashboard read-only). Halaman .html terlindung
   // di atas sudah ditangani sebelum sampai ke sini.
