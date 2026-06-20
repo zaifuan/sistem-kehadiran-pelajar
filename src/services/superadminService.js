@@ -15,6 +15,7 @@ import { pool } from '../db/pool.js';
 import { hashKataLaluan } from './authService.js';
 import { runSync } from './syncService.js';
 import * as TG from './telegramService.js';
+import { schedulerStarted } from './telegramScheduler.js';
 
 function s(v) {
   return v === undefined || v === null ? '' : String(v).trim();
@@ -494,7 +495,10 @@ export async function listActiveClassKod() {
 //  Token tidak pernah dipulangkan penuh. Audit jenis 'SYSTEM'.
 // ════════════════════════════════════════════════════════════
 export async function tgGetSettings() { return TG.getSettingsForUI(); }
-export async function tgStatus() { return TG.status(); }
+export async function tgStatus() {
+  const st = await TG.status();
+  return { ...st, scheduler_aktif: schedulerStarted() };
+}
 export async function tgRecentLogs() { return TG.recentLogs(); }
 
 export async function tgSaveSettings(body, actorId) {
@@ -510,5 +514,17 @@ export async function tgTest(actorId) {
 export async function tgSendDaily(force, actorId) {
   const r = await TG.sendDailyManual(!!force);
   if (r.dihantar) await audit(actorId, 'TELEGRAM_HARIAN', 'Laporan harian dihantar (manual)');
+  return r;
+}
+
+// Fasa 11B — hantar snapshot manual
+export async function tgSendWeekly(actorId) {
+  const r = await TG.sendWeeklyManual();
+  await audit(actorId, 'TELEGRAM_MINGGUAN', 'Snapshot mingguan dihantar (manual)');
+  return r;
+}
+export async function tgSendMonthly(actorId) {
+  const r = await TG.sendMonthlyManual();
+  await audit(actorId, 'TELEGRAM_BULANAN', 'Snapshot bulanan dihantar (manual)');
   return r;
 }

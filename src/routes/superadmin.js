@@ -10,6 +10,7 @@ import {
   resetAttendanceClass, resetAttendanceDay,
   systemSummary, listActiveClassKod, runSheetSync,
   tgGetSettings, tgStatus, tgRecentLogs, tgSaveSettings, tgTest, tgSendDaily,
+  tgSendWeekly, tgSendMonthly,
 } from '../services/superadminService.js';
 
 export const superadminRouter = Router();
@@ -179,6 +180,24 @@ superadminRouter.post('/telegram/daily', async (req, res) => {
 superadminRouter.get('/telegram/logs', async (req, res) => {
   try {
     res.json(await tgRecentLogs());
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// POST /api/superadmin/telegram/weekly  — hantar snapshot mingguan sekarang (manual)
+superadminRouter.post('/telegram/weekly', async (req, res) => {
+  try {
+    res.json(await tgSendWeekly(actorId(req)));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// POST /api/superadmin/telegram/monthly  — hantar snapshot bulanan sekarang (manual)
+superadminRouter.post('/telegram/monthly', async (req, res) => {
+  try {
+    res.json(await tgSendMonthly(actorId(req)));
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
   }

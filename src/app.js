@@ -17,6 +17,7 @@ import { adminRouter } from './routes/admin.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { superadminRouter } from './routes/superadmin.js';
+import { startTelegramScheduler } from './services/telegramScheduler.js';
 import { requireAuth, requireRole, requirePage } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -124,6 +125,9 @@ export function buatApp() {
 
   // 404
   app.use((req, res) => res.status(404).json({ ralat: 'Tidak dijumpai' }));
+
+  // Fasa 11B — mulakan penjadual automasi Telegram (dalam proses; unref).
+  startTelegramScheduler();
 
   return app;
 }

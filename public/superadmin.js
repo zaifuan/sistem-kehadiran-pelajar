@@ -535,6 +535,51 @@ async function loadTelegram() {
       </div>
 
       <div class="block">
+        <div class="block-head"><h2>Automasi</h2></div>
+        <p class="field-note" style="margin-bottom:10px">Penjadual: ${st.scheduler_aktif ? '🟢 Aktif (semakan 60s)' : '🔴 Tidak aktif'} — automasi hanya berjalan jika Bot Token & Chat ID ditetapkan.</p>
+
+        <div class="card form-card">
+          <label class="switch"><input id="au-m-en" type="checkbox" ${chk(t.morning_enabled)} /><span class="switch-track"><span class="switch-thumb"></span></span><span>Peringatan Pagi</span></label>
+          <p class="field-note">Ingatkan guru/pembantu mengisi kehadiran. Tidak dihantar pada Sabtu/Ahad atau hari cuti.</p>
+          <div class="field"><label for="au-m-time">Masa</label><input id="au-m-time" type="time" class="inp num" value="${esc(t.morning_time)}" /></div>
+        </div>
+
+        <div class="card form-card">
+          <label class="switch"><input id="au-f-en" type="checkbox" ${chk(t.followup_enabled)} /><span class="switch-track"><span class="switch-thumb"></span></span><span>Peringatan Kelas Belum Isi</span></label>
+          <p class="field-note">Senarai kelas belum mengisi (dengan guru & pembantu) secara berkala. Tidak dihantar pada Sabtu/Ahad atau hari cuti.</p>
+          <div class="field-row">
+            <div class="field"><label for="au-f-start">Masa Mula</label><input id="au-f-start" type="time" class="inp num" value="${esc(t.followup_start_time)}" /></div>
+            <div class="field"><label for="au-f-end">Masa Tamat</label><input id="au-f-end" type="time" class="inp num" value="${esc(t.followup_end_time)}" /></div>
+          </div>
+          <div class="field"><label for="au-f-iv">Kekerapan</label><select id="au-f-iv" class="inp">${[30, 60, 120].map((v) => opt(v, 'Setiap ' + v + ' minit', t.followup_interval_minutes)).join('')}</select></div>
+        </div>
+
+        <div class="card form-card">
+          <label class="switch"><input id="au-w-en" type="checkbox" ${chk(t.weekly_enabled)} /><span class="switch-track"><span class="switch-thumb"></span></span><span>Snapshot Mingguan</span></label>
+          <div class="field-row">
+            <div class="field"><label for="au-w-day">Hari</label><select id="au-w-day" class="inp">${[1, 2, 3, 4, 5, 6, 7].map((v) => opt(v, HARI[v], t.weekly_day)).join('')}</select></div>
+            <div class="field"><label for="au-w-time">Masa</label><input id="au-w-time" type="time" class="inp num" value="${esc(t.weekly_time)}" /></div>
+          </div>
+          <button id="tg-weekly-now" class="btn ghost" type="button">Hantar Mingguan Sekarang</button>
+          <div id="tg-weekly-hasil" class="sync-hasil" hidden></div>
+        </div>
+
+        <div class="card form-card">
+          <label class="switch"><input id="au-mo-en" type="checkbox" ${chk(t.monthly_enabled)} /><span class="switch-track"><span class="switch-thumb"></span></span><span>Snapshot Bulanan</span></label>
+          <div class="field-row">
+            <div class="field"><label for="au-mo-mode">Mod Hari</label><select id="au-mo-mode" class="inp">${opt('last', 'Hari terakhir bulan', t.monthly_day_mode)}${opt('fixed', 'Hari tertentu', t.monthly_day_mode)}</select></div>
+            <div class="field"><label for="au-mo-day">Hari (jika tertentu)</label><input id="au-mo-day" type="number" min="1" max="31" class="inp num" value="${esc(t.monthly_day)}" /></div>
+          </div>
+          <div class="field"><label for="au-mo-time">Masa</label><input id="au-mo-time" type="time" class="inp num" value="${esc(t.monthly_time)}" /></div>
+          <button id="tg-monthly-now" class="btn ghost" type="button">Hantar Bulanan Sekarang</button>
+          <div id="tg-monthly-hasil" class="sync-hasil" hidden></div>
+        </div>
+
+        <button id="tg-auto-simpan" class="btn primary" type="button">Simpan Automasi</button>
+        <div id="tg-auto-hasil" class="sync-hasil" hidden></div>
+      </div>
+
+      <div class="block">
         <div class="block-head"><h2>Log Penghantaran <span class="pill">${lg.jumlah}</span></h2></div>
         <div class="list">${lg.jumlah ? lg.log.map(kadLogTg).join('') : '<div class="empty">Tiada log lagi.</div>'}</div>
       </div>`;
@@ -560,6 +605,9 @@ function bindTelegram() {
   $('#tg-simpan').addEventListener('click', simpanTelegram);
   $('#tg-uji').addEventListener('click', ujiTelegram);
   $('#tg-daily').addEventListener('click', () => hantarHarian(false));
+  $('#tg-auto-simpan').addEventListener('click', simpanAutomasi);
+  $('#tg-weekly-now').addEventListener('click', hantarMingguan);
+  $('#tg-monthly-now').addEventListener('click', hantarBulanan);
 }
 
 async function simpanTelegram() {
@@ -612,3 +660,41 @@ async function hantarHarian(force) {
     box.className = 'sync-hasil err'; box.hidden = false; box.innerHTML = `Gagal: ${esc(err.message)}`;
   } finally { btn.disabled = false; btn.textContent = lbl; }
 }
+
+// ── Fasa 11B: helper + handler automasi ──
+const HARI = { 1: 'Isnin', 2: 'Selasa', 3: 'Rabu', 4: 'Khamis', 5: 'Jumaat', 6: 'Sabtu', 7: 'Ahad' };
+function chk(b) { return b ? 'checked' : ''; }
+function opt(v, label, cur) { return `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(label)}</option>`; }
+
+function kumpulAutomasi() {
+  return {
+    morning_enabled: $('#au-m-en').checked, morning_time: $('#au-m-time').value,
+    followup_enabled: $('#au-f-en').checked, followup_start_time: $('#au-f-start').value, followup_end_time: $('#au-f-end').value,
+    followup_interval_minutes: parseInt($('#au-f-iv').value, 10),
+    weekly_enabled: $('#au-w-en').checked, weekly_day: parseInt($('#au-w-day').value, 10), weekly_time: $('#au-w-time').value,
+    monthly_enabled: $('#au-mo-en').checked, monthly_day_mode: $('#au-mo-mode').value, monthly_day: parseInt($('#au-mo-day').value, 10), monthly_time: $('#au-mo-time').value,
+  };
+}
+
+async function simpanAutomasi() {
+  const btn = $('#tg-auto-simpan'); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menyimpan…';
+  try {
+    await fetchJSON('/api/superadmin/telegram/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(kumpulAutomasi()) });
+    toast('Tetapan automasi disimpan.', 'ok');
+    loadTelegram();
+  } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = lbl; }
+}
+
+async function hantarSnapshot(jenis, urlSuffix, boxSel, btnSel) {
+  const box = $(boxSel); const btn = $(btnSel); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menghantar…';
+  try {
+    const d = await fetchJSON('/api/superadmin/telegram/' + urlSuffix, { method: 'POST' });
+    box.className = 'sync-hasil ok'; box.hidden = false; box.innerHTML = esc(d.mesej);
+    toast('Snapshot ' + jenis + ' dihantar.', 'ok');
+    loadTelegram();
+  } catch (err) {
+    box.className = 'sync-hasil err'; box.hidden = false; box.innerHTML = `Gagal: ${esc(err.message)}`;
+  } finally { btn.disabled = false; btn.textContent = lbl; }
+}
+function hantarMingguan() { return hantarSnapshot('mingguan', 'weekly', '#tg-weekly-hasil', '#tg-weekly-now'); }
+function hantarBulanan() { return hantarSnapshot('bulanan', 'monthly', '#tg-monthly-hasil', '#tg-monthly-now'); }

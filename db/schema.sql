@@ -248,3 +248,33 @@ CREATE TABLE IF NOT EXISTS telegram_settings (
   CONSTRAINT telegram_settings_singleton CHECK (id = 1)
 );
 INSERT INTO telegram_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+--  FASA 11B — Automasi Telegram (additif & idempotent).
+--  • Medan automasi pada telegram_settings (ADD COLUMN IF NOT EXISTS).
+--  • telegram_job_logs = ledger dedup (job_key UNIK) supaya scheduler
+--    tidak hantar job sama berkali-kali. Log penghantaran untuk paparan
+--    kekal di telegram_logs (Fasa 8/11A).
+--  • Tiada perubahan pada data Fasa 11A.
+-- ════════════════════════════════════════════════════════════
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS morning_enabled           BOOLEAN DEFAULT FALSE;
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS morning_time              TEXT    DEFAULT '07:00';
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS followup_enabled          BOOLEAN DEFAULT FALSE;
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS followup_start_time       TEXT    DEFAULT '08:00';
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS followup_end_time         TEXT    DEFAULT '12:00';
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS followup_interval_minutes INTEGER DEFAULT 30;
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS weekly_enabled            BOOLEAN DEFAULT FALSE;
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS weekly_day                INTEGER DEFAULT 5;   -- ISO 1=Isnin..7=Ahad
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS weekly_time               TEXT    DEFAULT '14:00';
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS monthly_enabled           BOOLEAN DEFAULT FALSE;
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS monthly_day_mode          TEXT    DEFAULT 'last'; -- 'last' | 'fixed'
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS monthly_day               INTEGER DEFAULT 28;
+ALTER TABLE telegram_settings ADD COLUMN IF NOT EXISTS monthly_time              TEXT    DEFAULT '17:00';
+
+CREATE TABLE IF NOT EXISTS telegram_job_logs (
+  id           SERIAL PRIMARY KEY,
+  job_key      TEXT UNIQUE NOT NULL,     -- cth 'morning:2026-06-22' — elak ulang
+  job_type     TEXT,
+  status       TEXT,
+  dicipta_pada TIMESTAMPTZ DEFAULT now()
+);
