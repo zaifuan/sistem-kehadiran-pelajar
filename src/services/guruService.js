@@ -1,5 +1,6 @@
 import { pool } from '../db/pool.js';
 import { listKelasKodForUser } from './assignmentService.js';
+import { writeBackDataKehadiran } from './sheetWritebackService.js';
 
 // ── Tarikh & masa "hari ini" ikut zon Asia/Kuala_Lumpur (server authoritative) ──
 function todayKL() {
@@ -155,6 +156,17 @@ export async function simpanKehadiran(payload) {
       );
     }
     await client.query('COMMIT');
+
+    // Fasa B: write-back DATA_KEHADIRAN selepas commit (NON-FATAL; hormat WRITEBACK_*).
+    // Jika gagal, simpanan DB tetap berjaya — hanya log amaran.
+    try {
+      await writeBackDataKehadiran({
+        tarikh: t.display, kelas, namaKelas, guru,
+        jumlah, hadir, tidakHadir, wakil, masa: t.masa,
+      });
+    } catch (e) {
+      console.warn('[WRITEBACK] DATA_KEHADIRAN gagal (DB tetap berjaya):', (e && e.message) || e);
+    }
 
     return {
       ok: true,
