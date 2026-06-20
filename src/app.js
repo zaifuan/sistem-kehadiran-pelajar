@@ -17,7 +17,6 @@ import { adminRouter } from './routes/admin.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { superadminRouter } from './routes/superadmin.js';
-import { startTelegramScheduler } from './services/telegramScheduler.js';
 import { requireAuth, requireRole, requirePage } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,7 +63,9 @@ export function buatApp() {
 
   // ── API terbuka (read-only) — Fasa 1-4 kekal tanpa auth ──
   app.use('/api', healthRouter);            // /api/health
-  app.use('/api/sync', syncRouter);         // sync read-only (tidak disentuh)
+  // K-1: enjin sync boleh menulis/menimpa data — dikunci kepada SUPER_ADMIN.
+  // (UI awam ambil status sync dari /api/dashboard/summary, bukan /api/sync.)
+  app.use('/api/sync', requireAuth, requireRole('SUPER_ADMIN'), syncRouter);
   app.use('/api/dashboard', dashboardRouter); // dashboard read-only — KEKAL TERBUKA
   app.use('/api/auth', authRouter);         // log masuk / keluar / me
   app.use('/api/guru', guruRouter);         // Portal Guru — TERBUKA (Fasa 8.1: tanpa login)
@@ -125,9 +126,6 @@ export function buatApp() {
 
   // 404
   app.use((req, res) => res.status(404).json({ ralat: 'Tidak dijumpai' }));
-
-  // Fasa 11B — mulakan penjadual automasi Telegram (dalam proses; unref).
-  startTelegramScheduler();
 
   return app;
 }

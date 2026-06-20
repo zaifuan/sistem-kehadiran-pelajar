@@ -276,6 +276,7 @@ async function importDataKehadiran(client, rows) {
          tarikh_raw = EXCLUDED.tarikh_raw, jumlah = EXCLUDED.jumlah, hadir = EXCLUDED.hadir,
          tidak_hadir = EXCLUDED.tidak_hadir, wakil = EXCLUDED.wakil, peratus = EXCLUDED.peratus,
          guru = EXCLUDED.guru, masa_raw = EXCLUDED.masa_raw, sumber = 'sheet'
+       WHERE attendance_records.sumber IS DISTINCT FROM 'server'
        RETURNING id`,
       [
         tarikh, tarikhRaw, kelas,
@@ -283,6 +284,16 @@ async function importDataKehadiran(client, rows) {
         toPeratus(r[c.peratus]), s(r[c.guru]) || null, s(r[c.masa]) || null,
       ]
     );
+    // K-2: jika konflik dgn rekod bersumber 'server' (Portal Guru), UPDATE dilangkau oleh
+    // WHERE di atas → tiada baris dipulangkan. JANGAN timpa; log warning & langkau baris.
+    if (rec.rowCount === 0) {
+      await logSync(client, {
+        jenis: 'DATA_KEHADIRAN:KONFLIK_SUMBER',
+        status: 'warning',
+        mesej: `Kelas ${kelas} (${tarikh}): rekod sedia ada bersumber 'server' (Portal Guru) — TIDAK ditimpa oleh Sheet.`,
+      });
+      continue;
+    }
     const recordId = rec.rows[0].id;
 
     // Ganti bersih anak rekod (idempotent)

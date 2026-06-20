@@ -17,22 +17,25 @@ async function seedUser({ username, password, nama }, roleKod) {
   const rid = await roleId(roleKod);
   if (!rid) { console.warn(`[seed] ⚠️ Peranan ${roleKod} tiada — langkau ${username}.`); return; }
 
+  const pw = String(password || '').trim();
+  if (!pw) {
+    console.warn(`[seed] ⚠️ Kata laluan untuk ${username} tidak ditetapkan dalam .env — akaun TIDAK dicipta.`);
+    return;
+  }
+
   const sedia = await pool.query('SELECT 1 FROM users WHERE username=$1', [username]);
   if (sedia.rowCount > 0) {
     console.log(`[seed] • ${username} (${roleKod}) sudah wujud — tidak diubah.`);
     return;
   }
-  const hash = await hashKataLaluan(password);
+  const hash = await hashKataLaluan(pw);
   await pool.query(
     `INSERT INTO users (username, kata_laluan_hash, role_id, nama, aktif)
        VALUES ($1,$2,$3,$4,TRUE)
        ON CONFLICT (username) DO NOTHING`,
     [username, hash, rid, nama]
   );
-  console.log(`[seed] ✅ ${username} (${roleKod}) dicipta.`);
-  if (password === 'ubah_saya_segera') {
-    console.warn(`[seed] ⚠️ ${username} guna kata laluan lalai — TUKAR SEGERA selepas log masuk pertama.`);
-  }
+  console.log(`[seed] ✅ ${username} (${roleKod}) dicipta. Tukar kata laluan selepas log masuk pertama.`);
 }
 
 export async function runSeed() {

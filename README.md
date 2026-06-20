@@ -35,7 +35,8 @@ Migrasi sistem kehadiran **SABK MAAHAD AL-KHAIR LIL BANAT** daripada Google Apps
 ```bash
 # 1. Salin & isi konfigurasi
 cp .env.example .env
-nano .env          # tetapkan DB_PASSWORD & JWT_SECRET yang kuat
+nano .env          # WAJIB isi nilai kuat: DB_PASSWORD, SESSION_SECRET (openssl rand -hex 32),
+                   #            SEED_SUPERADMIN_PASSWORD, SEED_ADMIN_PASSWORD
 
 # 2. Bina & jalankan
 docker compose up -d --build
@@ -88,7 +89,7 @@ Enjin sync menyalin data dari Google Sheet ke PostgreSQL (cache). **Tiada tulisa
 3. **Share kedua-dua Google Sheet** kepada email service account — **Viewer sahaja**.
 4. Pastikan `.env` ada: `GOOGLE_APPLICATION_CREDENTIALS`, `SHEET_MASTER_PELAJAR_ID`, `SHEET_KEHADIRAN_ID`.
 
-**Endpoint (tanpa auth — Fasa 2 sahaja):**
+**Endpoint (kini dikunci `SUPER_ADMIN` — lihat K-1 di Nota Keselamatan):**
 
 | Method | Path | Fungsi |
 |---|---|---|
@@ -205,8 +206,9 @@ Lapisan log masuk berasaskan **sesi cookie** (bukan JWT) disimpan dalam PostgreS
 
 | Route | Syarat |
 |---|---|
-| `/`, `/api/dashboard/*`, `/api/health`, `/api/sync/*` | **terbuka** (read-only — tidak diubah) |
-| `/guru`, `/api/guru/*` | GURU / ADMIN / SUPER_ADMIN (guru: kelas ditugaskan sahaja) |
+| `/`, `/api/dashboard/*`, `/api/health` | **terbuka** (read-only) |
+| `/api/sync/*` | **SUPER_ADMIN** (K-1 — cetus sync menulis data) |
+| `/guru`, `/api/guru/*` | **terbuka** (tiada login — lihat Nota Keselamatan) |
 | `/admin`, `/api/admin/*` | ADMIN / SUPER_ADMIN |
 | `/analytics`, `/api/analytics/*` | ADMIN / SUPER_ADMIN |
 | `/api/audit/*` | SUPER_ADMIN |
@@ -229,5 +231,8 @@ Butiran penuh: [`docs/FASA-0-AUDIT-SISTEM-KEHADIRAN.md`](docs/FASA-0-AUDIT-SISTE
 ## Nota Keselamatan
 
 - `.env` dan `secrets/` **tidak** di-commit (lihat `.gitignore`).
+- **Fail-closed (produksi):** jika `SESSION_SECRET`, `SEED_SUPERADMIN_PASSWORD`, atau `SEED_ADMIN_PASSWORD` kosong/lalai semasa `NODE_ENV=production`, server **tidak bermula** (mesej jelas). Kata laluan seed dipakai **sekali** (`ON CONFLICT DO NOTHING`) — tukar selepas log masuk pertama; selepas akaun dicipta boleh set `RUN_SEED_ON_START=false`.
+- **Cetusan sync (`/api/sync/*`) kini dikunci `SUPER_ADMIN`.** Sync Google Sheet **tidak** lagi menimpa rekod kehadiran bersumber `server` (Portal Guru); konflik dilog sebagai `warning` dalam `sync_logs`.
+- **Portal Guru (`/guru`, `/api/guru/*`) kini TERBUKA tanpa login** (kekal seperti aliran GAS demi kemudahan guru). *Risiko:* sesiapa di LAN boleh isi/menimpa kehadiran kelas hari ini. *Mitigasi dicadang (fasa keselamatan seterusnya):* token/pautan rahsia setiap kelas (cth `/guru?kelas=1K&token=…`) supaya hanya pemegang pautan boleh mengisi kelas itu — tanpa memaksa log masuk penuh.
 - Port PostgreSQL hanya terbuka pada `127.0.0.1` server (bukan internet).
 - **JANGAN** guna token Telegram lama (terdedah dalam kod asal).

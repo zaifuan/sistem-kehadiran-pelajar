@@ -1,10 +1,13 @@
-import { config } from './config.js';
+import { config, assertProductionSecrets } from './config.js';
 import { buatApp } from './app.js';
 import { runMigrations } from './db/migrate.js';
 import { runSeed } from './db/seed.js';
 import { pool } from './db/pool.js';
 
 async function main() {
+  // K-3: fail-closed jika SESSION_SECRET / kata laluan seed lemah dalam produksi.
+  assertProductionSecrets();
+
   if (config.runMigrationsOnStart) {
     await runMigrations();
   }
