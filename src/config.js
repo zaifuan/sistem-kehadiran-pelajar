@@ -44,6 +44,16 @@ export const config = {
     masterPelajarId: process.env.SHEET_MASTER_PELAJAR_ID || '', // Sheet #1 (rujukan guru/pembantu)
     kehadiranId: process.env.SHEET_KEHADIRAN_ID || '', // Sheet #2 (master kehadiran/peratus)
   },
+  // ── Write-back Google Sheet (Fasa A — infrastruktur SELAMAT) ──
+  // enabled=false               → semua write-back dimatikan.
+  // enabled=true & dryRun=true  → payload dibina & dilog, TIADA tulisan API.
+  // enabled=true & dryRun=false → tulisan sebenar dibenarkan.
+  // spreadsheetId: WRITEBACK_SPREADSHEET_ID; jika kosong → SHEET_KEHADIRAN_ID.
+  writeback: {
+    enabled: String(process.env.WRITEBACK_ENABLED || 'false').toLowerCase() === 'true',
+    dryRun: String(process.env.WRITEBACK_DRY_RUN || 'true').toLowerCase() !== 'false',
+    spreadsheetId: process.env.WRITEBACK_SPREADSHEET_ID || process.env.SHEET_KEHADIRAN_ID || '',
+  },
 };
 
 // ════════════════════════════════════════════════════════════

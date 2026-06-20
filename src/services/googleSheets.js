@@ -14,7 +14,16 @@ import { config } from '../config.js';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+// Skop OAuth: read-only secara lalai. Skop tulis diminta HANYA bila write
+// sebenar dibenarkan (WRITEBACK_ENABLED=true && WRITEBACK_DRY_RUN=false),
+// supaya tingkah laku read-only sedia ada kekal IDENTIK.
+const SCOPE_RO = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+const SCOPE_RW = 'https://www.googleapis.com/auth/spreadsheets';
+function scopeSemasa() {
+  return config.writeback && config.writeback.enabled && !config.writeback.dryRun
+    ? SCOPE_RW
+    : SCOPE_RO;
+}
 
 // ── Retry ringkas untuk ralat rangkaian sementara (token & Sheets API) ──
 const RETRYABLE = new Set(['ERR_STREAM_PREMATURE_CLOSE', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN']);
@@ -92,7 +101,7 @@ function buatJwt(creds, nowSec) {
   const header = { alg: 'RS256', typ: 'JWT' };
   const claim = {
     iss: creds.client_email,
-    scope: SCOPE,
+    scope: scopeSemasa(),
     aud: TOKEN_URL,
     iat: nowSec,
     exp: nowSec + 3600, // token JWT sah 1 jam
@@ -197,4 +206,125 @@ export async function readTab(spreadsheetId, tabName) {
     `?valueRenderOption=FORMATTED_VALUE`;
   const data = await sheetsGet(url);
   return data.values || [];
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  WRITE-BACK (Fasa A) — infrastruktur SELAMAT
+//  Dikawal config.writeback:
+//    enabled=false               → dimatikan (tiada payload, tiada API)
+//    enabled=true & dryRun=true  → bina payload + log, TIADA panggilan API
+//    enabled=true & dryRun=false → tulisan REST sebenar (PUT/POST)
+//  Fungsi read-only (listTabs/readTab/sheetsGet) di atas TIDAK diubah.
+// ════════════════════════════════════════════════════════════
+
+// POST/PUT Sheets REST API dengan Bearer token + retry. Pulang JSON terhurai.
+async function sheetsWrite(method, url, body) {
+  return withRetry(async () => {
+    const token = await getAccessToken();
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (res.status === 401) _token = null;
+    if (!res.ok) {
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = (j.error && j.error.message) || text;
+      } catch (_) { /* biar mesej mentah */ }
+      const e = new Error(`Sheets WRITE gagal (HTTP ${res.status}): ${msg}`);
+      e.status = res.status;
+      throw e;
+    }
+    return text ? JSON.parse(text) : {};
+  });
+}
+
+// Log terperinci untuk mod DRY-RUN (tiada API dipanggil).
+function logDryRun(op, spreadsheetId, range, payload) {
+  const baris = [
+    '[WRITEBACK-DRYRUN]',
+    `Spreadsheet: ${spreadsheetId}`,
+    `Range: ${range || '(tiada)'}`,
+    `Operation: ${op}`,
+    '',
+    'Payload:',
+    JSON.stringify(payload, null, 2),
+    '',
+    'Tiada API write dipanggil.',
+  ];
+  console.log(baris.join('\n'));
+}
+
+// Gerbang pusat: kuat kuasa enabled/dryRun untuk SEMUA helper tulis.
+async function runWrite({ op, spreadsheetId, range, payload, call }) {
+  if (!config.writeback || !config.writeback.enabled) {
+    console.log(`[WRITEBACK] dimatikan (WRITEBACK_ENABLED=false) — ${op} dilangkau.`);
+    return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED', op, spreadsheetId, range };
+  }
+  if (!spreadsheetId) {
+    throw new Error('WRITEBACK: spreadsheetId kosong (set WRITEBACK_SPREADSHEET_ID atau SHEET_KEHADIRAN_ID).');
+  }
+  if (config.writeback.dryRun) {
+    logDryRun(op, spreadsheetId, range, payload);
+    return { ok: true, dryRun: true, op, spreadsheetId, range, payload };
+  }
+  const hasil = await call();
+  console.log(`[WRITEBACK] ${op} BERJAYA — ${spreadsheetId}${range ? ' ' + range : ''}`);
+  return { ok: true, dryRun: false, op, spreadsheetId, range, hasil };
+}
+
+// Selesaikan spreadsheetId: argumen → config.writeback.spreadsheetId.
+function resolveSpreadsheetId(spreadsheetId) {
+  return spreadsheetId || (config.writeback && config.writeback.spreadsheetId) || '';
+}
+
+// PUT values: kemas kini satu julat. values = array baris (array sel).
+export async function updateRange(spreadsheetId, range, values, opts = {}) {
+  const sid = resolveSpreadsheetId(spreadsheetId);
+  const valueInputOption = opts.valueInputOption || 'USER_ENTERED';
+  const payload = { range, majorDimension: 'ROWS', values };
+  return runWrite({
+    op: 'UPDATE', spreadsheetId: sid, range, payload,
+    call: async () => {
+      const url =
+        `${SHEETS_BASE}/${encodeURIComponent(sid)}/values/${encodeURIComponent(range)}` +
+        `?valueInputOption=${encodeURIComponent(valueInputOption)}`;
+      return sheetsWrite('PUT', url, payload);
+    },
+  });
+}
+
+// POST values:append — tambah baris baharu di hujung julat.
+export async function appendRows(spreadsheetId, range, values, opts = {}) {
+  const sid = resolveSpreadsheetId(spreadsheetId);
+  const valueInputOption = opts.valueInputOption || 'USER_ENTERED';
+  const insertDataOption = opts.insertDataOption || 'INSERT_ROWS';
+  const payload = { range, majorDimension: 'ROWS', values };
+  return runWrite({
+    op: 'APPEND', spreadsheetId: sid, range, payload,
+    call: async () => {
+      const url =
+        `${SHEETS_BASE}/${encodeURIComponent(sid)}/values/${encodeURIComponent(range)}:append` +
+        `?valueInputOption=${encodeURIComponent(valueInputOption)}` +
+        `&insertDataOption=${encodeURIComponent(insertDataOption)}`;
+      return sheetsWrite('POST', url, payload);
+    },
+  });
+}
+
+// POST :batchUpdate — permintaan berstruktur/format (sisip lajur, format sel, dll).
+export async function batchUpdate(spreadsheetId, requests) {
+  const sid = resolveSpreadsheetId(spreadsheetId);
+  const payload = { requests: Array.isArray(requests) ? requests : [] };
+  return runWrite({
+    op: 'BATCH_UPDATE', spreadsheetId: sid, range: null, payload,
+    call: async () => {
+      const url = `${SHEETS_BASE}/${encodeURIComponent(sid)}:batchUpdate`;
+      return sheetsWrite('POST', url, payload);
+    },
+  });
 }
