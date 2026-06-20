@@ -1,6 +1,6 @@
 import { pool } from '../db/pool.js';
 import { listKelasKodForUser } from './assignmentService.js';
-import { writeBackDataKehadiran } from './sheetWritebackService.js';
+import { writeBackDataKehadiran, writeBackTabTingkatan } from './sheetWritebackService.js';
 
 // ── Tarikh & masa "hari ini" ikut zon Asia/Kuala_Lumpur (server authoritative) ──
 function todayKL() {
@@ -166,6 +166,16 @@ export async function simpanKehadiran(payload) {
       });
     } catch (e) {
       console.warn('[WRITEBACK] DATA_KEHADIRAN gagal (DB tetap berjaya):', (e && e.message) || e);
+    }
+
+    // Fasa C: write-back tab tingkatan T1–T5/STAM (NON-FATAL; dry-run; hormat WRITEBACK_*).
+    try {
+      await writeBackTabTingkatan({
+        tarikh: t.display, kelas, namaKelas, guru,
+        jumlah, hadir, tidakHadir, wakil, masa: t.masa,
+      });
+    } catch (e) {
+      console.warn('[WRITEBACK] Tab tingkatan gagal (DB tetap berjaya):', (e && e.message) || e);
     }
 
     return {
