@@ -151,6 +151,9 @@ async function loadGridKelas() {
 async function openKelas(kod) {
   showScreen('isi');
   state.kelas = kod; state.status = {};
+  // UI: label butang utama ikut status hari ini (data sedia ada; tiada API/query baharu).
+  const sudahIsiKelas = !!(state.classesByKod[kod] && state.classesByKod[kod].status_hari_ini === 'selesai');
+  $('#btn-simpan').textContent = sudahIsiKelas ? 'Kemaskini' : 'Hantar';
   $('#isi-nama-kelas').textContent = 'Memuatkan…';
   $('#isi-guru').textContent = '';
   $('#cari-pelajar').value = '';
@@ -272,6 +275,8 @@ function bukaSahkan() {
 
 async function simpan() {
   const btn = $('#btn-sahkan');
+  // Snapshot status sebelum hantar — tentukan mesej 'dihantar' vs 'dikemaskini'.
+  const sudahIsiKelas = !!(state.classesByKod[state.kelas] && state.classesByKod[state.kelas].status_hari_ini === 'selesai');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
   const tidakHadir = [], wakil = [];
   Object.keys(state.status).forEach((n) => {
@@ -284,7 +289,7 @@ async function simpan() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kelas: state.kelas, tidakHadir, wakil }),
     });
-    toast(`Disimpan: ${d.kelas} — hadir ${d.hadir}/${d.jumlah} (${d.peratus == null ? '—' : d.peratus + '%'})`, 'ok');
+    toast(sudahIsiKelas ? '✓ Kehadiran berjaya dikemaskini' : '✓ Kehadiran berjaya dihantar', 'ok');
     // Selesai → kembali ke grid, segarkan kiraan kelas
     await loadGridKelas();
     showScreen('kelas');
