@@ -376,7 +376,7 @@ async function resetKelas() {
   const btn = $('#btn-reset-kelas');
   btn.disabled = true; btn.textContent = 'Memadam…';
   try {
-    const qs = new URLSearchParams({ tarikh, kelas });
+    const qs = new URLSearchParams({ tarikh, kelas, sahan: 'SAHKAN' });
     const r = await fetchJSON('/api/superadmin/attendance?' + qs.toString(), { method: 'DELETE' });
     toast(r.mesej || 'Direset.', r.rekod_dipadam > 0 ? 'ok' : 'bad');
   } catch (err) {

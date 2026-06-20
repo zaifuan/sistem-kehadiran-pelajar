@@ -80,7 +80,8 @@ superadminRouter.delete('/holidays/:id', async (req, res) => {
 superadminRouter.delete('/attendance', async (req, res) => {
   try {
     const q = req.query || {};
-    res.json(await resetAttendanceClass(q.tarikh, q.kelas, actorId(req)));
+    const sahan = s(q.sahan) || s(req.body && req.body.sahan) || s(q.sahkan) || s(req.body && req.body.sahkan);
+    res.json(await resetAttendanceClass(q.tarikh, q.kelas, sahan, actorId(req)));
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
   }

@@ -350,13 +350,6 @@ async function stepWrap(ringkasan, client, nama, fn) {
     await logSync(client, { jenis: nama, status: 'berjaya', bil, mesej: `${bil} baris disync` });
     ringkasan.langkah.push({ nama, status: 'berjaya', bil });
   } catch (err) {
-    // [SYNC-DEBUG] logging sementara — papar ralat sebenar di server log
-    console.error(`[SYNC-DEBUG] stepWrap '${nama}' gagal:`, {
-      message: err && err.message,
-      code: err && err.code,
-      stack: err && err.stack,
-      cause: err && err.cause,
-    });
     const msg = String(err && err.message ? err.message : err);
     await logSync(client, { jenis: nama, status: 'gagal', mesej: msg });
     ringkasan.langkah.push({ nama, status: 'gagal', bil: 0, mesej: msg });
@@ -374,13 +367,6 @@ export async function runSync() {
     try {
       tabsKehadiran = new Set(await listTabs(config.sheets.kehadiranId));
     } catch (err) {
-      // [SYNC-DEBUG] logging sementara — papar ralat sebenar di server log
-      console.error('[SYNC-DEBUG] SHEET2:AKSES gagal:', {
-        message: err && err.message,
-        code: err && err.code,
-        stack: err && err.stack,
-        cause: err && err.cause,
-      });
       const msg = String(err && err.message ? err.message : err);
       await logSync(client, { jenis: 'SHEET2:AKSES', status: 'gagal', mesej: `Gagal akses Sheet#2: ${msg}` });
       ringkasan.langkah.push({ nama: 'SHEET2:AKSES', status: 'gagal', bil: 0, mesej: msg });
@@ -389,13 +375,6 @@ export async function runSync() {
     try {
       tabsPelajar = new Set(await listTabs(config.sheets.masterPelajarId));
     } catch (err) {
-      // [SYNC-DEBUG] logging sementara — papar ralat sebenar di server log
-      console.error('[SYNC-DEBUG] SHEET1:AKSES gagal:', {
-        message: err && err.message,
-        code: err && err.code,
-        stack: err && err.stack,
-        cause: err && err.cause,
-      });
       const msg = String(err && err.message ? err.message : err);
       await logSync(client, { jenis: 'SHEET1:AKSES', status: 'warning', mesej: `Gagal akses Sheet#1: ${msg}` });
       ringkasan.langkah.push({ nama: 'SHEET1:AKSES', status: 'warning', bil: 0, mesej: msg });
@@ -448,13 +427,6 @@ export async function runSync() {
     try {
       await logSync(client, { jenis: 'RINGKASAN', status: ringkasan.status, mesej: JSON.stringify(ringkasan) });
     } catch (err) {
-      // [SYNC-DEBUG] logging sementara — papar ralat sebenar di server log
-      console.error('[SYNC-DEBUG] log RINGKASAN gagal:', {
-        message: err && err.message,
-        code: err && err.code,
-        stack: err && err.stack,
-        cause: err && err.cause,
-      });
       // diabaikan
     }
     client.release();

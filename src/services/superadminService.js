@@ -125,6 +125,19 @@ export async function updateUser(id, perubahan, actorId) {
       setParts.push(`kata_laluan_hash=$${params.length}`);
     }
     params.push(uid);
+    // M-1: jangan nyahaktif SUPER_ADMIN aktif yang terakhir (elak lockout sistem).
+    if (adaAktif && aktif === false && semasa.rows[0].kod === 'SUPER_ADMIN') {
+      const lain = await client.query(
+        `SELECT COUNT(*)::int AS n FROM users u
+           JOIN roles r ON r.id=u.role_id
+          WHERE r.kod='SUPER_ADMIN' AND u.aktif=TRUE AND u.id<>$1`,
+        [uid]
+      );
+      if (lain.rows[0].n === 0) {
+        const e = new Error('Tidak boleh nyahaktif SUPER_ADMIN aktif yang terakhir.'); e.status = 409; throw e;
+      }
+    }
+
     await client.query(`UPDATE users SET ${setParts.join(', ')} WHERE id=$${params.length}`, params);
 
     const butiran = [
@@ -333,12 +346,15 @@ export async function deleteHoliday(id, actorId) {
 // ════════════════════════════════════════════════════════════
 
 // Reset kehadiran SATU kelas pada SATU tarikh.
-// Wajib: tarikh & kelas. Pulang bil rekod dipadam.
-export async function resetAttendanceClass(tarikhRaw, kelasRaw, actorId) {
+// Wajib: tarikh, kelas & sahkan === 'SAHKAN' (defense-in-depth, selaras reset hari).
+export async function resetAttendanceClass(tarikhRaw, kelasRaw, sahkan, actorId) {
   const tarikh = normIsoDate(tarikhRaw);
   const kelas = s(kelasRaw).toUpperCase();
   if (!tarikh) { const e = new Error('Tarikh wajib (YYYY-MM-DD)'); e.status = 400; throw e; }
   if (!kelas) { const e = new Error('Kelas wajib'); e.status = 400; throw e; }
+  if (s(sahkan) !== 'SAHKAN') {
+    const e = new Error('Pengesahan gagal — taip SAHKAN'); e.status = 400; throw e;
+  }
 
   const client = await pool.connect();
   try {
@@ -439,7 +455,7 @@ export async function resetAttendanceDay(tarikhRaw, sahkan, actorId) {
 
 // ════════════════════════════════════════════════════════════
 //  4) MAKLUMAT SISTEM
-//  Kad ringkas. Status Telegram/SheetSync = placeholder Fasa akan datang.
+//  Kad ringkas. Status Telegram (penjadual) & Sheet Sync (log terakhir) — langsung.
 // ════════════════════════════════════════════════════════════
 export async function systemSummary() {
   const r = await pool.query(
@@ -447,7 +463,9 @@ export async function systemSummary() {
        (SELECT COUNT(*) FROM classes WHERE status='aktif')::int                AS kelas_aktif,
        (SELECT COUNT(*) FROM students WHERE status='aktif')::int               AS pelajar_aktif,
        (SELECT COUNT(*) FROM users WHERE aktif=TRUE)::int                      AS akaun_aktif,
-       (SELECT COUNT(*) FROM holidays WHERE aktif=TRUE)::int                   AS cuti_aktif`
+       (SELECT COUNT(*) FROM holidays WHERE aktif=TRUE)::int                   AS cuti_aktif,
+       (SELECT status FROM sync_logs WHERE jenis='RINGKASAN' ORDER BY id DESC LIMIT 1)          AS sync_status,
+       (SELECT dijalankan_pada FROM sync_logs WHERE jenis='RINGKASAN' ORDER BY id DESC LIMIT 1) AS sync_masa`
   );
   const a = r.rows[0] || {};
   return {
@@ -456,8 +474,8 @@ export async function systemSummary() {
     jumlah_pelajar_aktif: a.pelajar_aktif || 0,
     jumlah_akaun_aktif: a.akaun_aktif || 0,
     jumlah_cuti_aktif: a.cuti_aktif || 0,
-    status_telegram: 'Akan datang Fasa 10',
-    status_google_sheet_sync: 'Akan datang Fasa 11',
+    status_telegram: schedulerStarted() ? 'Aktif (penjadual berjalan)' : 'Aktif (penjadual tidak aktif)',
+    status_google_sheet_sync: a.sync_status ? ('Sync terakhir: ' + a.sync_status + (a.sync_masa ? ' · ' + new Date(a.sync_masa).toISOString().slice(0, 16).replace('T', ' ') : '')) : 'Sedia · belum pernah disync',
   };
 }
 
