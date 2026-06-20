@@ -242,3 +242,7 @@ main { padding: 14px 16px calc(28px + env(safe-area-inset-bottom)); max-width: 8
 .toast.bad { background: var(--bad); }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Fasa 11A — Telegram */
+.btn-row { display: flex; gap: 8px; }
+.btn-row .btn { flex: 1; }

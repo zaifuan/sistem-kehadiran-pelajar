@@ -48,7 +48,7 @@ function fmtMasa(ts) {
   return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-const TABS = ['sistem', 'akaun', 'cuti', 'reset'];
+const TABS = ['sistem', 'akaun', 'cuti', 'reset', 'telegram'];
 const state = { tab: 'sistem', loaded: {}, me: null };
 
 // ── Navigasi tab ──
@@ -64,6 +64,7 @@ function initTab(name) {
   else if (name === 'akaun') loadAkaun();
   else if (name === 'cuti') initCuti();
   else if (name === 'reset') initReset();
+  else if (name === 'telegram') loadTelegram();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -478,3 +479,136 @@ async function init() {
   loadSistem();
 }
 init();
+
+// ════════════════════════════════════════════════════════════
+//  5) TELEGRAM ASAS (Fasa 11A)
+// ════════════════════════════════════════════════════════════
+async function loadTelegram() {
+  const box = $('#tg-body');
+  box.innerHTML = '<div class="loading"><div class="spinner"></div>Memuatkan…</div>';
+  try {
+    const [s, st, lg] = await Promise.all([
+      fetchJSON('/api/superadmin/telegram/settings'),
+      fetchJSON('/api/superadmin/telegram/status'),
+      fetchJSON('/api/superadmin/telegram/logs'),
+    ]);
+    const t = s.tetapan;
+    const badge = st.dikonfigurasi ? '<span class="badge-status on">Sedia</span>' : '<span class="badge-status off">Belum lengkap</span>';
+    box.innerHTML = `
+      <div class="block">
+        <div class="block-head"><h2>Status Telegram</h2></div>
+        <div class="card"><div class="row-card">
+          <div class="row-main">
+            <div class="row-title">Sambungan</div>
+            <div class="row-sub">Token: ${esc(t.token_mask || 'Tidak ditetapkan')}${t.token_sumber ? ' · ' + esc(t.token_sumber) : ''}</div>
+            <div class="row-sub">Chat ID: ${esc(t.chat_mask || 'Tidak ditetapkan')}</div>
+          </div>${badge}
+        </div></div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><h2>Tetapan Sambungan</h2></div>
+        <div class="card form-card">
+          <div class="field">
+            <label for="tg-token">Bot Token ${t.token_set ? '<span class="lbl-opt">(tersimpan — kosongkan jika tidak ubah)</span>' : ''}</label>
+            <input id="tg-token" type="password" class="inp" autocomplete="off" placeholder="${t.token_set ? '•••••• (tersimpan)' : 'Tampal bot token'}" />
+          </div>
+          <div class="field">
+            <label for="tg-chat">Chat ID</label>
+            <input id="tg-chat" type="text" class="inp num" autocomplete="off" value="${esc(t.chat_id || '')}" placeholder="cth: -1001234567890" />
+          </div>
+          <div class="btn-row">
+            <button id="tg-simpan" class="btn primary" type="button">Simpan Tetapan</button>
+            <button id="tg-uji" class="btn ghost" type="button">Uji Telegram</button>
+          </div>
+          <div id="tg-uji-hasil" class="sync-hasil" hidden></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><h2>Laporan Harian (Manual)</h2></div>
+        <div class="card form-card">
+          <p class="field-note">Hantar laporan kehadiran harian ke Telegram. Digunakan selepas semua kelas selesai mengisi kehadiran.</p>
+          <button id="tg-daily" class="btn primary" type="button">Hantar Laporan Harian</button>
+          <div id="tg-daily-hasil" class="sync-hasil" hidden></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><h2>Log Penghantaran <span class="pill">${lg.jumlah}</span></h2></div>
+        <div class="list">${lg.jumlah ? lg.log.map(kadLogTg).join('') : '<div class="empty">Tiada log lagi.</div>'}</div>
+      </div>`;
+    bindTelegram();
+  } catch (err) {
+    box.innerHTML = `<div class="err">Gagal memuatkan: ${esc(err.message)}</div>`;
+  }
+}
+
+function kadLogTg(l) {
+  const cls = l.status === 'dihantar' ? 'on' : 'off';
+  const ref = l.tarikh_rujukan ? ' · ' + fmtTarikh(l.tarikh_rujukan) : '';
+  return `<div class="card"><div class="row-card">
+      <div class="row-main">
+        <div class="row-title">${esc(l.jenis_mesej || '—')}${ref}</div>
+        <div class="row-sub num">${esc(l.dihantar_pada || '')}${l.ringkasan ? ' · ' + esc(l.ringkasan) : ''}</div>
+      </div>
+      <span class="badge-status ${cls}">${esc(String(l.status || '').toUpperCase())}</span>
+    </div></div>`;
+}
+
+function bindTelegram() {
+  $('#tg-simpan').addEventListener('click', simpanTelegram);
+  $('#tg-uji').addEventListener('click', ujiTelegram);
+  $('#tg-daily').addEventListener('click', () => hantarHarian(false));
+}
+
+async function simpanTelegram() {
+  const tok = $('#tg-token').value.trim();
+  const body = { chat_id: $('#tg-chat').value.trim() };
+  if (tok) body.bot_token = tok;
+  const btn = $('#tg-simpan'); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menyimpan…';
+  try {
+    await fetchJSON('/api/superadmin/telegram/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Tetapan Telegram disimpan.', 'ok');
+    loadTelegram();
+  } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = lbl; }
+}
+
+async function ujiTelegram() {
+  const tok = $('#tg-token').value.trim(), chat = $('#tg-chat').value.trim();
+  const box = $('#tg-uji-hasil'); box.hidden = true;
+  const btn = $('#tg-uji'); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menguji…';
+  try {
+    if (tok || chat) {
+      const body = {}; if (tok) body.bot_token = tok; if (chat) body.chat_id = chat;
+      await fetchJSON('/api/superadmin/telegram/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    }
+    const d = await fetchJSON('/api/superadmin/telegram/test', { method: 'POST' });
+    box.className = 'sync-hasil ok'; box.hidden = false;
+    box.innerHTML = `Sambungan OK — bot @${esc(d.bot.username)}.${d.mesej_dihantar ? ' Mesej ujian dihantar.' : ''}${d.amaran ? ' (' + esc(d.amaran) + ')' : ''}`;
+    toast('Uji Telegram berjaya.', 'ok');
+    if (tok) loadTelegram();
+  } catch (err) {
+    box.className = 'sync-hasil err'; box.hidden = false; box.innerHTML = `Gagal: ${esc(err.message)}`;
+  } finally { btn.disabled = false; btn.textContent = lbl; }
+}
+
+async function hantarHarian(force) {
+  const box = $('#tg-daily-hasil');
+  const btn = $('#tg-daily'); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menghantar…';
+  try {
+    const d = await fetchJSON('/api/superadmin/telegram/daily' + (force ? '?force=1' : ''), { method: 'POST' });
+    box.hidden = false;
+    if (d.amaran && !d.dihantar) {
+      box.className = 'sync-hasil warn';
+      box.innerHTML = `${esc(d.mesej)}<br><b>Belum isi:</b> ${esc(d.belum.join(', '))}<div class="btn-row" style="margin-top:10px"><button id="tg-daily-force" class="btn danger" type="button">Hantar Juga</button></div>`;
+      $('#tg-daily-force').addEventListener('click', () => hantarHarian(true));
+    } else {
+      box.className = 'sync-hasil ok'; box.innerHTML = esc(d.mesej);
+      toast('Laporan harian dihantar.', 'ok');
+      loadTelegram();
+    }
+  } catch (err) {
+    box.className = 'sync-hasil err'; box.hidden = false; box.innerHTML = `Gagal: ${esc(err.message)}`;
+  } finally { btn.disabled = false; btn.textContent = lbl; }
+}

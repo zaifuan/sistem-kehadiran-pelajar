@@ -9,6 +9,7 @@ import {
   listHolidays, createHoliday, updateHoliday, deleteHoliday,
   resetAttendanceClass, resetAttendanceDay,
   systemSummary, listActiveClassKod, runSheetSync,
+  tgGetSettings, tgStatus, tgRecentLogs, tgSaveSettings, tgTest, tgSendDaily,
 } from '../services/superadminService.js';
 
 export const superadminRouter = Router();
@@ -127,3 +128,58 @@ superadminRouter.post('/sync', async (req, res) => {
 function s(v) {
   return v === undefined || v === null ? '' : String(v).trim();
 }
+
+// ════════════════════════════════════════════════════════════
+//  5) TELEGRAM ASAS (Fasa 11A) — semua warisi guard SUPER_ADMIN
+//     daripada mount /api/superadmin di app.js.
+// ════════════════════════════════════════════════════════════
+superadminRouter.get('/telegram/settings', async (req, res) => {
+  try {
+    res.json(await tgGetSettings());
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+superadminRouter.get('/telegram/status', async (req, res) => {
+  try {
+    res.json(await tgStatus());
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// PATCH /api/superadmin/telegram/settings  { bot_token?, chat_id?, bot_token_clear? }
+superadminRouter.patch('/telegram/settings', async (req, res) => {
+  try {
+    res.json(await tgSaveSettings(req.body || {}, actorId(req)));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+superadminRouter.post('/telegram/test', async (req, res) => {
+  try {
+    res.json(await tgTest(actorId(req)));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// POST /api/superadmin/telegram/daily?force=1  — hantar laporan harian manual
+superadminRouter.post('/telegram/daily', async (req, res) => {
+  try {
+    const force = req.query.force === '1' || req.query.force === 'true' || (req.body && req.body.force === true);
+    res.json(await tgSendDaily(force, actorId(req)));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+superadminRouter.get('/telegram/logs', async (req, res) => {
+  try {
+    res.json(await tgRecentLogs());
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});

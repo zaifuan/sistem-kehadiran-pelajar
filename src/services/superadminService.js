@@ -14,6 +14,7 @@
 import { pool } from '../db/pool.js';
 import { hashKataLaluan } from './authService.js';
 import { runSync } from './syncService.js';
+import * as TG from './telegramService.js';
 
 function s(v) {
   return v === undefined || v === null ? '' : String(v).trim();
@@ -486,4 +487,28 @@ export async function listActiveClassKod() {
     jumlah: r.rowCount,
     kelas: r.rows.map((x) => ({ kod: x.kod, nama: x.nama, tingkatan: x.tingkatan || null })),
   };
+}
+
+// ════════════════════════════════════════════════════════════
+//  5) TELEGRAM ASAS (Fasa 11A) — delegasi ke telegramService.
+//  Token tidak pernah dipulangkan penuh. Audit jenis 'SYSTEM'.
+// ════════════════════════════════════════════════════════════
+export async function tgGetSettings() { return TG.getSettingsForUI(); }
+export async function tgStatus() { return TG.status(); }
+export async function tgRecentLogs() { return TG.recentLogs(); }
+
+export async function tgSaveSettings(body, actorId) {
+  const r = await TG.saveSettings(body || {});
+  await audit(actorId, 'TELEGRAM_TETAPAN', 'Tetapan Telegram dikemaskini');
+  return r;
+}
+export async function tgTest(actorId) {
+  const r = await TG.testTelegram();
+  await audit(actorId, 'TELEGRAM_UJI', 'Uji sambungan Telegram');
+  return r;
+}
+export async function tgSendDaily(force, actorId) {
+  const r = await TG.sendDailyManual(!!force);
+  if (r.dihantar) await audit(actorId, 'TELEGRAM_HARIAN', 'Laporan harian dihantar (manual)');
+  return r;
 }

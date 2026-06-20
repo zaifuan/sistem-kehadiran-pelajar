@@ -234,3 +234,17 @@ ALTER TABLE holidays ADD CONSTRAINT holidays_julat_nama_key
 
 CREATE INDEX IF NOT EXISTS idx_holidays_mula  ON holidays (tarikh_mula);
 CREATE INDEX IF NOT EXISTS idx_holidays_aktif ON holidays (aktif);
+
+-- ════════════════════════════════════════════════════════════
+--  FASA 11A — Telegram asas (additif). telegram_settings = baris
+--  tunggal (id=1) untuk Bot Token + Chat ID. Log penghantaran guna
+--  jadual telegram_logs (Fasa 8) yang sedia ada. Tiada scheduler.
+-- ════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS telegram_settings (
+  id               INTEGER PRIMARY KEY DEFAULT 1,
+  bot_token        TEXT,
+  chat_id          TEXT,
+  dikemaskini_pada TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT telegram_settings_singleton CHECK (id = 1)
+);
+INSERT INTO telegram_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
