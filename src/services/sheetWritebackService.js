@@ -861,6 +861,8 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
 //  - Fasa J: LIVE write (RAW) + auto-cipta tab/header jika tiada. Non-fatal di pemanggil.
 //    LIVE modul lain (DATA_KEHADIRAN / T1–T5/STAM / PERATUS HARIANMINGGUAN / MINGGUAN)
 //    TIDAK disentuh — fungsi ini hanya menulis ke tab LAPORAN_BULANAN.
+//  - Fasa K (polish): selepas tulis nilai, warna ambang baris (hijau>=95 / kuning>=85 / merah<85)
+//    pada sel kelas C–S (lewati '-') + sel sekolah V, meniru GAS. Non-fatal; tiada nilai disentuh.
 // ════════════════════════════════════════════════════════════
 
 const TAB_LAPORAN = 'LAPORAN_BULANAN';
@@ -932,6 +934,54 @@ export function buildLaporanBulananRow(inf, bulanData, bilHari) {
     ...URUTAN_KELAS_BULANAN.map((k) => peratusKelas[k]),
     totalH, totalJ, peratusSekolah];
   return { row, totalH, totalJ, peratusSekolah };
+}
+
+// ── Fasa K: warna ambang LAPORAN_BULANAN (IKUT GAS simpanLaporanBulananSheets) ──
+//   GAS: sel kelas C–S → parseFloat(nilai) >= 95 hijau / >= 85 kuning / else merah; '-' tiada warna.
+//        sel sekolah V → ambang sama. Hex sama dengan GAS (#e8f5e9 / #fff9c4 / #ffcdd2).
+const _RGB_HIJAU = { red: 232 / 255, green: 245 / 255, blue: 233 / 255 }; // #e8f5e9 (>=95%)
+const _RGB_KUNING = { red: 255 / 255, green: 249 / 255, blue: 196 / 255 }; // #fff9c4 (>=85%)
+const _RGB_MERAH = { red: 255 / 255, green: 205 / 255, blue: 210 / 255 }; // #ffcdd2 (<85%)
+function warnaAmbangBulanan(peratusStr) {
+  const p = parseFloat(peratusStr); // "96.67%" → 96.67 (IKUT GAS parseFloat(getValue()))
+  if (!Number.isFinite(p)) return null;
+  return p >= 95 ? _RGB_HIJAU : p >= 85 ? _RGB_KUNING : _RGB_MERAH;
+}
+
+// Warnakan satu baris LAPORAN_BULANAN: sel kelas C–S (lewati '-') + sel sekolah V.
+//   Hanya backgroundColor diubah — TIADA nilai disentuh. Non-fatal di pemanggil.
+async function warnakanBarisLaporanBulanan(sid, sheetIdMap, barisGuna, row, deps = {}) {
+  const _getSheetIdMap = deps.getSheetIdMap || getSheetIdMap;
+  const _batchUpdate = deps.batchUpdate || batchUpdate;
+  const m = sheetIdMap || (await _getSheetIdMap(sid));
+  const sheetId = m[TAB_LAPORAN];
+  if (sheetId == null) throw new Error(`sheetId untuk tab '${TAB_LAPORAN}' tidak dijumpai`);
+
+  const reqs = [];
+  const tambah = (kolum1, warna) => {
+    if (!warna) return;
+    reqs.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: barisGuna - 1, endRowIndex: barisGuna,
+          startColumnIndex: kolum1 - 1, endColumnIndex: kolum1,
+        },
+        cell: { userEnteredFormat: { backgroundColor: warna } },
+        fields: 'userEnteredFormat.backgroundColor',
+      },
+    });
+  };
+  // Lajur C–S (1-based 3..19) = 17 kelas. '-' → tiada warna (IKUT GAS).
+  for (let kolum1 = 3; kolum1 <= 19; kolum1++) {
+    const v = row[kolum1 - 1];
+    if (v !== '-') tambah(kolum1, warnaAmbangBulanan(v));
+  }
+  // Lajur V (1-based 22) = PERATUS SEKOLAH.
+  tambah(22, warnaAmbangBulanan(row[21]));
+
+  if (reqs.length === 0) return { ok: true, skipped: true, reason: 'TIADA_SEL_DIWARNA' };
+  return _batchUpdate(sid, reqs);
 }
 
 function logLaporanDryRun(sid, op, range, inf, row) {
@@ -1018,6 +1068,14 @@ export async function writeBackLaporanBulanan(fields, data = {}, deps = {}) {
   // (padanan upsert lajur A utuh → elak baris bulan pendua), sama seperti modul DATA_KEHADIRAN.
   const _updateRange = deps.updateRange || updateRange;
   const hasil = await _updateRange(sid, range, [row], { valueInputOption: 'RAW' });
+  // ── Fasa K: warna ambang baris (>=95% hijau / >=85% kuning / <85% merah) IKUT GAS. ──
+  // Non-fatal: nilai SUDAH ditulis; kegagalan warna tidak menggugurkan data.
+  let warnaHasil = null;
+  try {
+    warnaHasil = await warnakanBarisLaporanBulanan(sid, null, barisGuna, row, deps);
+  } catch (e) {
+    console.warn(`[WRITEBACK] Warna LAPORAN_BULANAN gagal (nilai tetap tersimpan): ${(e && e.message) || e}`);
+  }
   console.log(`[WRITEBACK] LAPORAN_BULANAN ${op} BERJAYA — ${inf.labelBulan} (${range}, ${bilHari} hari, ${row[row.length - 1]}).`);
-  return { ok: true, dryRun: false, op, range, row, inf, hasil };
+  return { ok: true, dryRun: false, op, range, row, inf, hasil, warnaHasil };
 }
