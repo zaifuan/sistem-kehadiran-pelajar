@@ -852,13 +852,15 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
 
 
 // ════════════════════════════════════════════════════════════
-//  LAPORAN_BULANAN (Fasa E) — DRY-RUN sahaja
+//  LAPORAN_BULANAN (Fasa E dry-run → Fasa J LIVE)
 //  Tiru GAS: semakDanSimpanBulanan + simpanLaporanBulananSheets.
 //  - Dijana HANYA pada HARI TERAKHIR BULAN (new Date(tahun,bulan,0)).
 //  - 22 lajur: A BULAN/TAHUN, B BIL HARI, C–S 17 kelas (% atau '-'),
 //    T JUMLAH HADIR, U JUMLAH PELAJAR, V PERATUS SEKOLAH.
 //  - Upsert ikut labelBulan (lajur A): jumpa → UPDATE baris sama; tiada → APPEND (lastRow+1).
-//  - Tiada tulisan LIVE.
+//  - Fasa J: LIVE write (RAW) + auto-cipta tab/header jika tiada. Non-fatal di pemanggil.
+//    LIVE modul lain (DATA_KEHADIRAN / T1–T5/STAM / PERATUS HARIANMINGGUAN / MINGGUAN)
+//    TIDAK disentuh — fungsi ini hanya menulis ke tab LAPORAN_BULANAN.
 // ════════════════════════════════════════════════════════════
 
 const TAB_LAPORAN = 'LAPORAN_BULANAN';
@@ -869,6 +871,33 @@ const URUTAN_KELAS_BULANAN = ['1K', '1A', '1M', '2K', '2A', '2M', '3K', '3A', '3
   '4K', '4A', '4M', '5K', '5A', '5M', 'STAMLULU', 'STAMMARJAN'];
 const TAJUK_BULANAN = ['BULAN/TAHUN', 'BIL HARI', ...URUTAN_KELAS_BULANAN,
   'JUMLAH HADIR', 'JUMLAH PELAJAR', 'PERATUS SEKOLAH'];
+
+// Cache (per proses): spreadsheetId yang tab LAPORAN_BULANAN + baris header sudah dipastikan.
+const _tabLBDipastikan = new Set();
+
+// Pastikan tab LAPORAN_BULANAN + baris header (22 lajur) wujud (LIVE sahaja; sekali per proses).
+// IKUT GAS simpanLaporanBulananSheets: jika sheet tiada → insertSheet + tulis header 22 lajur.
+// Tambahan selamat (ikut corak pastikanTabDataKehadiran): jika tab ada tetapi header
+// kosong/bukan 'BULAN/TAHUN' → tulis semula header (idempotent). Tiada data dipadam.
+async function pastikanTabLaporanBulanan(sid, deps = {}) {
+  if (_tabLBDipastikan.has(sid)) return;
+  const _listTabs = deps.listTabs || listTabs;
+  const _batchUpdate = deps.batchUpdate || batchUpdate;
+  const _readTab = deps.readTab || readTab;
+  const _updateRange = deps.updateRange || updateRange;
+
+  const tabs = await _listTabs(sid);
+  if (!tabs.includes(TAB_LAPORAN)) {
+    await _batchUpdate(sid, [{ addSheet: { properties: { title: TAB_LAPORAN } } }]);
+  }
+  const rows = await _readTab(sid, TAB_LAPORAN);
+  const adaHeader = String((rows[0] || [])[0] || '').trim().toUpperCase() === 'BULAN/TAHUN';
+  if (!adaHeader) {
+    const lastColL = colLetter(TAJUK_BULANAN.length); // V (22)
+    await _updateRange(sid, `${TAB_LAPORAN}!A1:${lastColL}1`, [TAJUK_BULANAN], { valueInputOption: 'RAW' });
+  }
+  _tabLBDipastikan.add(sid);
+}
 
 // Maklumat bulan untuk satu tarikh simpan (DD-MM-YYYY) — termasuk julat ISO & status hari terakhir.
 export function infoBulan(tarikhDisplay) {
@@ -917,7 +946,11 @@ function logLaporanDryRun(sid, op, range, inf, row) {
   console.log(baris.join('\n'));
 }
 
-// Write-back LAPORAN_BULANAN. DRY-RUN sahaja. data = { bulanData, bilHari }.
+// Write-back LAPORAN_BULANAN (Fasa J: LIVE). data = { bulanData, bilHari }.
+//   enabled=false → skip (tiada baca/tulis). dryRun=true → log payload sahaja (tiada API).
+//   dryRun=false → LIVE: pastikan tab/header → baca → UPDATE baris sama / APPEND baris baharu.
+//   Bukan hari terakhir bulan → SKIP. bilHari=0 → SKIP (ikut GAS hariSet.size===0).
+//   deps boleh disuntik untuk ujian: { readTab, updateRange, listTabs, batchUpdate }.
 export async function writeBackLaporanBulanan(fields, data = {}, deps = {}) {
   if (!config.writeback || !config.writeback.enabled) {
     return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED' };
@@ -954,6 +987,13 @@ export async function writeBackLaporanBulanan(fields, data = {}, deps = {}) {
   const lastColL = colLetter(row.length); // V (22)
 
   const _readTab = deps.readTab || readTab;
+
+  // LIVE sahaja (Fasa J): pastikan tab + header (22 lajur) wujud SEBELUM baca.
+  // Dry-run tidak menulis apa-apa, jadi tidak memanggil ensure (kekal seperti Fasa E).
+  if (!config.writeback.dryRun) {
+    await pastikanTabLaporanBulanan(sid, deps);
+  }
+
   const rows = await _readTab(sid, TAB_LAPORAN);
 
   // Cari baris ikut labelBulan di lajur A (mulai baris 2). Jumpa → UPDATE; tiada → APPEND (lastRow+1).
@@ -970,6 +1010,14 @@ export async function writeBackLaporanBulanan(fields, data = {}, deps = {}) {
     logLaporanDryRun(sid, op, range, inf, row);
     return { ok: true, dryRun: true, op, range, row, inf };
   }
-  console.warn('[WRITEBACK] LAPORAN_BULANAN: tulisan LIVE ditangguh — dilangkau (non-fatal).');
-  return { ok: false, skipped: true, reason: 'LIVE_DEFERRED', op, range };
+  // ── LIVE (Fasa J): tulis baris LAPORAN_BULANAN ──
+  // UPDATE baris sama (jumpa labelBulan) ATAU APPEND baris baharu (lastRow+1) — kedua-duanya
+  // setValues pada `range` eksplisit, MENIRU GAS sheet.getRange(rowTarget,1,1,22).setValues([rowData]).
+  // (readTab.length === sheet.getLastRow(), jadi baris APPEND = lastRow+1 tepat seperti GAS.)
+  // RAW: label "Jun 2026" & string % "96.67%" disimpan sebagai TEKS supaya FORMATTED_VALUE kekal
+  // (padanan upsert lajur A utuh → elak baris bulan pendua), sama seperti modul DATA_KEHADIRAN.
+  const _updateRange = deps.updateRange || updateRange;
+  const hasil = await _updateRange(sid, range, [row], { valueInputOption: 'RAW' });
+  console.log(`[WRITEBACK] LAPORAN_BULANAN ${op} BERJAYA — ${inf.labelBulan} (${range}, ${bilHari} hari, ${row[row.length - 1]}).`);
+  return { ok: true, dryRun: false, op, range, row, inf, hasil };
 }
