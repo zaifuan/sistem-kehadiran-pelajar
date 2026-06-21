@@ -328,3 +328,21 @@ export async function batchUpdate(spreadsheetId, requests) {
     },
   });
 }
+
+// Baca peta namaTab → sheetId (nombor) bagi semua tab dalam spreadsheet.
+// Diperlukan oleh operasi berstruktur seperti insertDimension (sisip lajur), yang
+// merujuk tab via sheetId (bukan nama). Pulang objek { [title]: sheetId }.
+// READ-ONLY — tidak bergantung pada writeback.enabled/dryRun.
+export async function getSheetIdMap(spreadsheetId) {
+  if (!spreadsheetId) throw new Error('spreadsheetId kosong');
+  const url =
+    `${SHEETS_BASE}/${encodeURIComponent(spreadsheetId)}` +
+    `?fields=${encodeURIComponent('sheets.properties(sheetId,title)')}`;
+  const data = await sheetsGet(url);
+  const map = {};
+  for (const sh of data.sheets || []) {
+    const p = sh.properties || {};
+    if (p.title != null) map[p.title] = p.sheetId;
+  }
+  return map;
+}

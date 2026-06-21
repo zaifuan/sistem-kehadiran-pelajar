@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { readTab, updateRange, appendRows, listTabs, batchUpdate } from './googleSheets.js';
+import { readTab, updateRange, appendRows, listTabs, batchUpdate, getSheetIdMap } from './googleSheets.js';
 
 // ════════════════════════════════════════════════════════════
 //  WRITE-BACK DATA_KEHADIRAN (Fasa B)
@@ -130,10 +130,14 @@ export async function writeBackDataKehadiran(fields, deps = {}) {
 
 
 // ════════════════════════════════════════════════════════════
-//  WRITE-BACK TAB TINGKATAN (Fasa C) — DRY-RUN sahaja
+//  WRITE-BACK TAB TINGKATAN (Fasa C → Fasa G → Fasa G2)
 //  Tulis nilai kelas (HADIR/JUMLAH/PERATUS) ke tab T1–T5/STAM,
 //  pada sel (baris kelas × lajur tarikh) — MENIRU GAS lama.
-//  Fasa C: dry-run sahaja. Tulisan LIVE + recompute % HARIAN/MINGGUAN = Fasa D.
+//  Fasa C: dry-run. Fasa G: LIVE write 3 sel kelas JIKA lajur tarikh wujud.
+//  Fasa G2: LIVE cipta lajur tarikh + tulis header (3 baris) + 3 sel, ikut
+//           logik GAS cariAtauBuatKolumTarikh (termasuk insertColumnBefore
+//           untuk elak overwrite PERATUS MINGGUAN).
+//  HANYA tab tingkatan ini yang menjadi LIVE; modul lain kekal fail-safe.
 //  Tidak menyentuh PERATUS HARIANMINGGUAN / LAPORAN_BULANAN.
 // ════════════════════════════════════════════════════════════
 
@@ -190,19 +194,87 @@ function logMatriksDryRun(o) {
     `Tarikh: ${o.tarikh}`,
     o.adaLajur
       ? `Operation: UPDATE  (lajur tarikh dijumpai di ${o.lajur})`
-      : `Operation: CREATE_COLUMN+UPDATE  (lajur tarikh TIADA → cadang lajur ${o.lajur}; TIDAK ditulis)`,
+      : `Operation: CREATE_COLUMN+UPDATE  (lajur tarikh cipta di ${o.lajur}${o.sisip ? ', sisip sebelum PERATUS MINGGUAN' : ', tambah di hujung'})`,
   ];
   o.sel.forEach((c) => baris.push(`  ${c.range} = ${c.label.padEnd(7)} : ${c.value}`));
   baris.push('PERATUS = pecahan nombor (format sel 0.00%), bukan string.');
-  if (!o.adaLajur) {
-    baris.push("Nota: penempatan tepat lajur (sebelum lajur 'PERATUS MINGGUAN') + tulis header tarikh = Fasa D.");
-  }
   baris.push(`TODO (Fasa D): % HARIAN sekolah baris ${o.rowSekolah}; % MINGGUAN; PERATUS HARIANMINGGUAN.`);
   baris.push('Tiada API write dipanggil.');
   console.log(baris.join('\n'));
 }
 
-// Write-back nilai kelas ke tab tingkatan (DRY-RUN sahaja untuk Fasa C).
+// ── Fasa G2: helper menentukan kolum baru (PURE — meniru GAS cariAtauBuatKolumTarikh) ──
+//   Pulang { kolum, sisip }:
+//     kolum = nombor lajur 1-based untuk tarikh baru
+//     sisip = true jika lajur perlu disisip SEBELUM kolum (elak overwrite MINGGUAN),
+//             false jika tambah di hujung (lastCol+1).
+//   rows     = baris tab dari readTab (array baris × sel)
+//   rowHadir = baris header tarikh (1-based)
+//   tarikh   = DD-MM-YYYY
+export function tentukanKolumBaru(rows, rowHadir, tarikh) {
+  const hdr = rows[rowHadir - 1] || [];
+  const lastCol = Math.max(hdr.length, 1); // bil lajur terisi (1-based)
+  const mingguSet = new Set(kiraMinggu(tarikh).tarikhMinggu);
+
+  // Lajur terakhir ialah header MINGGUAN? → semak lajur sebelumnya.
+  if (lastCol >= 3) {
+    const valLast = normTarikh(hdr[lastCol - 1]);
+    if (valLast.indexOf('MINGGUAN') !== -1) {
+      const valSebelum = normTarikh(hdr[lastCol - 2]);
+      if (mingguSet.has(valSebelum)) {
+        return { kolum: lastCol, sisip: true }; // insertColumnBefore(lastCol)
+      }
+    }
+  }
+  return { kolum: lastCol + 1, sisip: false }; // tambah di hujung kanan
+}
+
+// ── Fasa G2: sisip satu lajur SEBELUM kolum (REST insertDimension) ──
+//   sheetIdMap = hasil getSheetIdMap(); tab dicari via sheetId.
+//   Selepas insert, lajur baru berada di kedudukan `kolum` (MINGGUAN geser ke kanan).
+//   Pulang hasil batchUpdate.
+async function sisipLajurSebelum(sid, sheetIdMap, tab, kolum, deps = {}) {
+  const _getSheetIdMap = deps.getSheetIdMap || getSheetIdMap;
+  const _batchUpdate = deps.batchUpdate || batchUpdate;
+  const m = sheetIdMap || (await _getSheetIdMap(sid));
+  const sheetId = m[tab];
+  if (sheetId == null) throw new Error(`sheetId untuk tab '${tab}' tidak dijumpai`);
+  return _batchUpdate(sid, [{
+    insertDimension: {
+      range: {
+        sheetId,
+        dimension: 'COLUMNS',
+        startIndex: kolum - 1, // 0-based; insert sebelum kolum (1-based)
+        endIndex: kolum,
+      },
+      inheritFromBefore: true,
+    },
+  }]);
+}
+
+// ── Fasa G2: tulis header tarikh ke 3 baris (rowHadir/rowJumlah/rowPeratus) ──
+//   Meniru GAS tulisHdrTarikh (kehadiran.gs) — tarikh ditulis ke 3 baris header.
+//   headerRows = [rowHadir, rowJumlah, rowPeratus].
+async function tulisHdrTarikh(sid, tab, cfg, tarikh, kolum, deps = {}) {
+  const _updateRange = deps.updateRange || updateRange;
+  const L = colLetter(kolum);
+  const rowsHdr = [cfg.rowHadir, cfg.rowJumlah, cfg.rowPeratus];
+  const hasil = [];
+  for (const r of rowsHdr) {
+    hasil.push(_updateRange(sid, `${tab}!${L}${r}`, [[tarikh]], { valueInputOption: 'USER_ENTERED' }));
+  }
+  return Promise.all(hasil);
+}
+
+// Write-back nilai kelas ke tab tingkatan (Fasa G2: LIVE + cipta lajur).
+//   - dryRun=true  → bina 3 sel + log sahaja (tiada API write).
+//   - dryRun=false → LIVE: JIKA lajur tarikh wujud → tulis 3 sel (UPDATE).
+//                    JIKA lajur tarikh TIADA → cipta lajur (ikut GAS cariAtauBuatKolumTarikh:
+//                    insertColumnBefore jika selepas MINGGUAN, atau lastCol+1),
+//                    tulis header tarikh ke 3 baris, kemudian tulis 3 sel.
+//   - PERATUS = nombor pecahan (0.9524), valueInputOption='USER_ENTERED' supaya sel
+//     boleh memformatkan sebagai % (format sel 0.00%) — BUKAN teks "95.24%".
+//   - deps: { readTab, updateRange, getSheetIdMap, batchUpdate } boleh disuntik untuk ujian.
 export async function writeBackTabTingkatan(fields, deps = {}) {
   if (!config.writeback || !config.writeback.enabled) {
     return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED' };
@@ -215,33 +287,62 @@ export async function writeBackTabTingkatan(fields, deps = {}) {
   const { tab, cfg, idx } = found;
 
   const _readTab = deps.readTab || readTab;
+  const _updateRange = deps.updateRange || updateRange;
   const rows = await _readTab(sid, tab);
-
-  const colNum = cariLajurTarikh(rows, cfg.rowHadir, fields.tarikh);
-  const adaLajur = colNum > 0;
-  const hdr = rows[cfg.rowHadir - 1] || [];
-  const useCol = adaLajur ? colNum : hdr.length + 1; // append ringkas; penempatan tepat = Fasa D
-  const L = colLetter(useCol);
 
   const jumlah = Number(fields.jumlah) || 0;
   const hadir = Number(fields.hadir) || 0;
   const peratusNum = jumlah > 0 ? hadir / jumlah : 0; // GAS: pecahan, format sel 0.00%
 
+  // ── Fasa G2: cari lajur tarikh; jika tiada → cipta lajur (bukan skip) ──
+  let colNum = cariLajurTarikh(rows, cfg.rowHadir, fields.tarikh);
+  let sisip = false;
+  let op = 'UPDATE';
+  if (colNum < 0) {
+    // Cipta lajur baru mengikut logik GAS.
+    const keputusan = tentukanKolumBaru(rows, cfg.rowHadir, fields.tarikh);
+    colNum = keputusan.kolum;
+    sisip = keputusan.sisip;
+    op = sisip ? 'INSERT_COLUMN+UPDATE' : 'CREATE_COLUMN+UPDATE';
+
+    if (config.writeback.dryRun) {
+      // Dry-run: jangan cipta/tulis apa-apa — hanya log.
+    } else {
+      // LIVE: sisip lajur (jika perlu), kemudian tulis header tarikh ke 3 baris.
+      if (sisip) {
+        await sisipLajurSebelum(sid, null, tab, colNum, deps);
+      }
+      await tulisHdrTarikh(sid, tab, cfg, fields.tarikh, colNum, deps);
+    }
+  }
+
+  const L = colLetter(colNum);
   const sel = [
     { range: `${tab}!${L}${cfg.rowHadir + 1 + idx}`,   label: 'HADIR',   value: hadir },
     { range: `${tab}!${L}${cfg.rowJumlah + 1 + idx}`,  label: 'JUMLAH',  value: jumlah },
     { range: `${tab}!${L}${cfg.rowPeratus + 1 + idx}`, label: 'PERATUS', value: peratusNum },
   ];
   const rowSekolah = cfg.rowPeratus + cfg.kelas.length + 1; // % HARIAN sekolah (Fasa D)
-  const op = adaLajur ? 'UPDATE' : 'CREATE_COLUMN+UPDATE';
+  const adaLajur = op === 'UPDATE';
 
-  // Fasa C: DRY-RUN sahaja. Tulisan LIVE ditangguh ke Fasa D (perlu recompute agregat).
+  // Fasa G2: dry-run → log sahaja. LIVE → tulis 3 sel (USER_ENTERED supaya nombor/peratus betul).
   if (config.writeback.dryRun) {
-    logMatriksDryRun({ sid, tab, kelas: fields.kelas, idx, tarikh: fields.tarikh, adaLajur, lajur: L, sel, rowSekolah });
-    return { ok: true, dryRun: true, tab, op, lajur: L, adaLajur, sel, rowSekolah };
+    logMatriksDryRun({ sid, tab, kelas: fields.kelas, idx, tarikh: fields.tarikh, adaLajur, lajur: L, sisip, sel, rowSekolah });
+    return { ok: true, dryRun: true, tab, op, lajur: L, adaLajur, sisip, sel, rowSekolah };
   }
-  console.warn(`[WRITEBACK] Tab tingkatan ${tab}: tulisan LIVE ditangguh ke Fasa D — dilangkau (non-fatal).`);
-  return { ok: false, skipped: true, reason: 'LIVE_DEFERRED_FASA_D', tab, op, sel };
+
+  // LIVE write: tulis setiap sel (3 sel) secara berasingan. USER_ENTERED → Sheets anggap
+  // 0.9524 sebagai nombor & boleh format %; bukan teks "95.24%".
+  const hasil = [];
+  for (const c of sel) {
+    const r = await _updateRange(sid, c.range, [[c.value]], { valueInputOption: 'USER_ENTERED' });
+    hasil.push(r);
+  }
+  const catatan = op === 'UPDATE'
+    ? `lajur ${L} (3 sel)`
+    : `lajur ${L} (${sisip ? 'sisip sebelum MINGGUAN' : 'cipta di hujung'} + header 3 baris + 3 sel)`;
+  console.log(`[WRITEBACK] Tab tingkatan ${tab} BERJAYA — kelas ${fields.kelas}, tarikh ${fields.tarikh}, ${catatan}.`);
+  return { ok: true, dryRun: false, tab, op, lajur: L, adaLajur, sisip, sel, hasil };
 }
 
 
