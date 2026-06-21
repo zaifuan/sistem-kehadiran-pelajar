@@ -91,6 +91,51 @@ export async function getPelajar(kod) {
   };
 }
 
+// ── Rekod kehadiran HARI INI bagi kelas (read-only; Fasa UX kemaskini) ──
+//   Dipakai Portal Guru untuk pra-isi selepas guru membuka kelas semula.
+//   Pulangkan bentuk neutral (nama + sebab) — frontend yang petakan kategori.
+//   kelas: kod kelas (akan di-trim). Jika kosong/invalid → 400/404.
+//   exists=false jika tiada rekod hari ini. TIADA tulisan ke DB / Google Sheet.
+export async function getKehadiranHariIni(kelasRaw) {
+  const kelas = s(kelasRaw);
+  if (!kelas) { const e = new Error('Kelas wajib diisi'); e.status = 400; throw e; }
+
+  const t = todayKL();
+  const r = await pool.query(`
+    SELECT a.id, a.class_kod, a.tarikh, a.masa_isi
+      FROM attendance_records a
+     WHERE a.class_kod = $1 AND a.tarikh = $2
+     LIMIT 1`, [kelas, t.iso]);
+
+  if (r.rowCount === 0) {
+    return { ok: true, exists: false, class_kod: kelas, tarikh: t.display, masa_isi: null, tidakHadir: [], wakil: [] };
+  }
+
+  const rec = r.rows[0];
+  const ab = await pool.query(
+    'SELECT nama_pelajar, sebab FROM attendance_absentees WHERE record_id=$1 ORDER BY id', [rec.id]
+  );
+  const rp = await pool.query(
+    'SELECT nama_pelajar FROM attendance_representatives WHERE record_id=$1 ORDER BY id', [rec.id]
+  );
+
+  const masaDisplay = rec.masa_isi
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).format(new Date(rec.masa_isi))
+    : null;
+
+  return {
+    ok: true,
+    exists: true,
+    class_kod: rec.class_kod,
+    tarikh: t.display,
+    masa_isi: masaDisplay,
+    tidakHadir: ab.rows.map((x) => ({ nama: x.nama_pelajar, sebab: x.sebab || '' })),
+    wakil: rp.rows.map((x) => x.nama_pelajar),
+  };
+}
+
 // ── Simpan kehadiran ke PostgreSQL (upsert tarikh+kelas; TIADA write-back Sheet) ──
 // payload: { kelas, tidakHadir:[{nama,sebab}], wakil:[nama] }
 //   wakil sekolah DIKIRA HADIR; tidak hadir sebenar = bukan wakil.

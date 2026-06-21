@@ -151,9 +151,8 @@ async function loadGridKelas() {
 async function openKelas(kod) {
   showScreen('isi');
   state.kelas = kod; state.status = {};
-  // UI: label butang utama ikut status hari ini (data sedia ada; tiada API/query baharu).
-  const sudahIsiKelas = !!(state.classesByKod[kod] && state.classesByKod[kod].status_hari_ini === 'selesai');
-  $('#btn-simpan').textContent = sudahIsiKelas ? 'Kemaskini' : 'Hantar';
+  // Default 'Hantar'; ditukar ke 'Kemaskini' selepas rekod hari ini diperiksa.
+  $('#btn-simpan').textContent = 'Hantar';
   $('#isi-nama-kelas').textContent = 'Memuatkan…';
   $('#isi-guru').textContent = '';
   $('#cari-pelajar').value = '';
@@ -166,11 +165,60 @@ async function openKelas(kod) {
     $('#isi-nama-kelas').textContent = state.namaKelas + ' (' + kod + ')';
     $('#isi-guru').textContent = state.guru ? ('Guru: ' + state.guru) : 'Tiada guru kelas';
     $('#topbar-title').textContent = kod;
+    // Pra-isi dari rekod hari ini (jika sudah wujud) — guru kemaskini, bukan isi semula.
+    await praIsiDariRekod(kod);
     renderSenarai();
     updateRingkasan();
   } catch (e) {
     $('#senarai-pelajar').innerHTML = `<div class="err">Gagal memuatkan pelajar.<br><small>${esc(e.message)}</small></div>`;
   }
+}
+
+// ── Pra-isi dari rekod hari ini (Fasa UX kemaskini) ──
+//   Cari indeks kategori (KATEGORI_SEBAB) yang mengandungi butiran sebab ini.
+//   Pulangkan -1 jika sebab tidak dikenali.
+function findCatIdxBySebab(sebab) {
+  if (!sebab) return -1;
+  for (let i = 0; i < KATEGORI_SEBAB.length; i++) {
+    if (KATEGORI_SEBAB[i].sebab.indexOf(sebab) !== -1) return i;
+  }
+  return -1;
+}
+
+// Muatkan rekod kehadiran hari ini bagi kelas; jika wujud, pra-tanda pelajar
+// tidak hadir + pulihkan sebab + wakil. Label butang ditukar ikut keadaan.
+// Gagal muat rekod → diam; guru boleh isi (backend akan upsert idempotent).
+async function praIsiDariRekod(kod) {
+  let rekod;
+  try {
+    rekod = await fetchJSON('/api/guru/kehadiran?kelas=' + encodeURIComponent(kod));
+  } catch (e) {
+    return;  // jangan halang — paparan kosong seperti biasa
+  }
+  if (!rekod || !rekod.exists) return;  // belum isi → butang kekal 'Hantar'
+
+  // Indeks kategori wakil (sekolah) — dikira hadir.
+  const catIdxWakil = KATEGORI_SEBAB.findIndex((c) => c.wakil);
+  const sebabWakil = catIdxWakil >= 0 ? (KATEGORI_SEBAB[catIdxWakil].sebab[0] || '') : '';
+
+  // Pulihkan pelajar tidak hadir dengan sebab (nama yang masih aktif sahaja).
+  (rekod.tidakHadir || []).forEach((x) => {
+    if (!x || !x.nama || state.pelajar.indexOf(x.nama) === -1) return; // keluar/pindah → abaikan
+    const catIdx = findCatIdxBySebab(x.sebab);
+    state.status[x.nama] = {
+      jenis: 'th',
+      catIdx: catIdx >= 0 ? catIdx : '',
+      sebab: catIdx >= 0 ? x.sebab : '',
+    };
+  });
+
+  // Pulihkan wakil (mengatasi tidak hadir jika bertindih — konsisten dgn backend).
+  (rekod.wakil || []).forEach((nama) => {
+    if (!nama || state.pelajar.indexOf(nama) === -1) return;
+    state.status[nama] = { jenis: 'wakil', catIdx: catIdxWakil >= 0 ? catIdxWakil : '', sebab: sebabWakil };
+  });
+
+  $('#btn-simpan').textContent = 'Kemaskini';
 }
 
 // Bina sel sebab (dropdown kategori + sub-sebab) untuk pelajar tidak hadir.

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getClasses, getClassesStatus, getPelajar, simpanKehadiran } from '../services/guruService.js';
+import { getClasses, getClassesStatus, getPelajar, getKehadiranHariIni, simpanKehadiran } from '../services/guruService.js';
 
 export const guruRouter = Router();
 
@@ -25,6 +25,17 @@ guruRouter.get('/classes-status', async (req, res) => {
 guruRouter.get('/classes/:kod/pelajar', async (req, res) => {
   try {
     res.json(await getPelajar(req.params.kod));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// GET /api/guru/kehadiran?kelas=4M — rekod kehadiran HARI INI bagi kelas (read-only).
+//   Pulangkan { ok, exists, class_kod, tarikh, masa_isi, tidakHadir, wakil }.
+//   Tiada tulisan ke DB / Google Sheet. Untuk pra-isi kemaskini Portal Guru.
+guruRouter.get('/kehadiran', async (req, res) => {
+  try {
+    res.json(await getKehadiranHariIni(req.query && req.query.kelas));
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
   }
