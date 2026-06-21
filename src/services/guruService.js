@@ -1,6 +1,6 @@
 import { pool } from '../db/pool.js';
 import { listKelasKodForUser } from './assignmentService.js';
-import { writeBackDataKehadiran, writeBackTabTingkatan } from './sheetWritebackService.js';
+import { writeBackDataKehadiran, writeBackTabTingkatan, writeBackPeratusDanAgregat, kiraMinggu, writeBackMingguan } from './sheetWritebackService.js';
 
 // ── Tarikh & masa "hari ini" ikut zon Asia/Kuala_Lumpur (server authoritative) ──
 function todayKL() {
@@ -176,6 +176,36 @@ export async function simpanKehadiran(payload) {
       });
     } catch (e) {
       console.warn('[WRITEBACK] Tab tingkatan gagal (DB tetap berjaya):', (e && e.message) || e);
+    }
+
+    // Fasa D: PERATUS HARIANMINGGUAN + agregat harian (NON-FATAL; dry-run; hormat WRITEBACK_*).
+    try {
+      const hariIni = (await client.query(
+        `SELECT a.class_kod, c.tingkatan, a.hadir, a.jumlah
+           FROM attendance_records a JOIN classes c ON c.kod = a.class_kod
+          WHERE a.tarikh = $1`, [t.iso])).rows;
+      const roster = (await client.query(
+        `SELECT c.kod, c.tingkatan,
+           (SELECT COUNT(*) FROM students s WHERE s.class_kod = c.kod AND s.status = 'aktif')::int AS jumlah_aktif
+           FROM classes c WHERE c.status = 'aktif'`)).rows;
+      await writeBackPeratusDanAgregat({ tarikh: t.display, kelas, jumlah, hadir }, { hariIni, roster });
+    } catch (e) {
+      console.warn('[WRITEBACK] PERATUS/agregat gagal (DB tetap berjaya):', (e && e.message) || e);
+    }
+
+    // Fasa D2: agregat MINGGUAN (Isnin–Jumaat) (NON-FATAL; dry-run; hormat WRITEBACK_*).
+    try {
+      const mg = kiraMinggu(t.display);
+      if (mg.hariMinggu) {
+        const mingguRows = (await client.query(
+          `SELECT a.class_kod, c.tingkatan, SUM(a.hadir)::int AS hadir, SUM(a.jumlah)::int AS jumlah
+             FROM attendance_records a JOIN classes c ON c.kod = a.class_kod
+            WHERE a.tarikh BETWEEN $1 AND $2
+            GROUP BY a.class_kod, c.tingkatan`, [mg.isninIso, mg.jumaatIso])).rows;
+        await writeBackMingguan({ tarikh: t.display, kelas }, { mg, mingguRows });
+      }
+    } catch (e) {
+      console.warn('[WRITEBACK] Mingguan gagal (DB tetap berjaya):', (e && e.message) || e);
     }
 
     return {
