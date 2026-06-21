@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { readTab, updateRange, appendRows } from './googleSheets.js';
+import { readTab, updateRange, appendRows, listTabs, batchUpdate } from './googleSheets.js';
 
 // ════════════════════════════════════════════════════════════
 //  WRITE-BACK DATA_KEHADIRAN (Fasa B)
@@ -10,6 +10,12 @@ import { readTab, updateRange, appendRows } from './googleSheets.js';
 // ════════════════════════════════════════════════════════════
 
 const TAB = 'DATA_KEHADIRAN';
+
+// Header DATA_KEHADIRAN (IKUT GAS setup.gs buatStrukturDataTab).
+const DATA_KEHADIRAN_HEADERS = ['TARIKH', 'KELAS', 'NAMA_KELAS', 'GURU', 'JUMLAH', 'HADIR', 'TIDAK_HADIR', 'WAKIL', 'PERATUS', 'SENARAI_TH', 'SENARAI_WAKIL', 'MASA'];
+
+// Cache (per proses): spreadsheetId yang tab DATA_KEHADIRAN + baris header sudah dipastikan.
+const _tabDKDipastikan = new Set();
 
 // Normalisasi ringkas tarikh untuk perbandingan (readTab pulang FORMATTED_VALUE = teks).
 function normTarikh(v) {
@@ -62,13 +68,36 @@ export function cariBarisDataKehadiran(rows, tarikh, kelas) {
   return -1;
 }
 
+// Pastikan tab DATA_KEHADIRAN + baris header wujud (LIVE sahaja; sekali per proses).
+// Padanan upsert bergantung pada baris header (data bermula baris 2). IKUT GAS yang auto-cipta tab.
+async function pastikanTabDataKehadiran(sid, deps = {}) {
+  if (_tabDKDipastikan.has(sid)) return;
+  const _listTabs = deps.listTabs || listTabs;
+  const _batchUpdate = deps.batchUpdate || batchUpdate;
+  const _readTab = deps.readTab || readTab;
+  const _updateRange = deps.updateRange || updateRange;
+
+  const tabs = await _listTabs(sid);
+  if (!tabs.includes(TAB)) {
+    await _batchUpdate(sid, [{ addSheet: { properties: { title: TAB } } }]);
+  }
+  const rows = await _readTab(sid, TAB);
+  const adaHeader = String((rows[0] || [])[0] || '').trim().toUpperCase() === 'TARIKH';
+  if (!adaHeader) {
+    await _updateRange(sid, `${TAB}!A1:L1`, [DATA_KEHADIRAN_HEADERS], { valueInputOption: 'RAW' });
+  }
+  _tabDKDipastikan.add(sid);
+}
+
 // Write-back satu rekod ke DATA_KEHADIRAN (upsert ikut tarikh+kelas).
 //   1. Baca tab → cari baris (tarikh,kelas).
 //   2. Jumpa  → UPDATE julat baris sama (A{n}:L{n}).
 //      Tiada → APPEND satu baris (A:L).
 //   - WRITEBACK_ENABLED=false → tiada apa berlaku (tiada baca, tiada tulis).
 //   - DRY_RUN=true → updateRange/appendRows hanya log (tiada API write).
-//   - deps boleh disuntik untuk ujian: { readTab, updateRange, appendRows }.
+//   - DRY_RUN=false → tulisan REST sebenar; valueInputOption='RAW' supaya tarikh/peratus
+//     disimpan sebagai TEKS (FORMATTED_VALUE kekal sama → padanan upsert utuh → elak pendua).
+//   - deps boleh disuntik untuk ujian: { readTab, updateRange, appendRows, listTabs, batchUpdate }.
 export async function writeBackDataKehadiran(fields, deps = {}) {
   if (!config.writeback || !config.writeback.enabled) {
     return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED' };
@@ -79,6 +108,12 @@ export async function writeBackDataKehadiran(fields, deps = {}) {
   const _readTab = deps.readTab || readTab;
   const _updateRange = deps.updateRange || updateRange;
   const _appendRows = deps.appendRows || appendRows;
+  const RAW = { valueInputOption: 'RAW' };
+
+  // LIVE sahaja: pastikan tab + header wujud (dry-run tidak menulis apa-apa).
+  if (!config.writeback.dryRun) {
+    await pastikanTabDataKehadiran(sid, deps);
+  }
 
   const row = buildDataKehadiranRow(fields);
 
@@ -88,9 +123,9 @@ export async function writeBackDataKehadiran(fields, deps = {}) {
 
   // 2. UPDATE jika jumpa (baris sama — elak duplicate); APPEND jika tidak.
   if (rowNum > 0) {
-    return _updateRange(sid, `${TAB}!A${rowNum}:L${rowNum}`, [row]);
+    return _updateRange(sid, `${TAB}!A${rowNum}:L${rowNum}`, [row], RAW);
   }
-  return _appendRows(sid, `${TAB}!A:L`, [row]);
+  return _appendRows(sid, `${TAB}!A:L`, [row], RAW);
 }
 
 
