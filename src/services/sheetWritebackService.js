@@ -234,18 +234,32 @@ export function tentukanKolumBaru(rows, rowHadir, tarikh) {
 //   Selepas insert, lajur baru berada di kedudukan `kolum` (MINGGUAN geser ke kanan).
 //   Pulang hasil batchUpdate.
 async function sisipLajurSebelum(sid, sheetIdMap, tab, kolum, deps = {}) {
+  return sisipLajur(sid, sheetIdMap, tab, kolum, 'before', deps);
+}
+
+// ── Fasa I: sisip satu lajur SELEPAS kolum (REST insertDimension after) ──
+//   Meniru GAS insertColumnAfter(kolumTarikhTerakhir) untuk lajur PERATUS MINGGUAN.
+//   Selepas insert, lajur baru berada di kedudukan `kolum + 1`.
+async function sisipLajurSelepas(sid, sheetIdMap, tab, kolum, deps = {}) {
+  return sisipLajur(sid, sheetIdMap, tab, kolum, 'after', deps);
+}
+
+// Teras insertDimension: arah 'before' (insert di kolum) atau 'after' (insert di kolum+1).
+// GAS insertColumnBefore/After; inheritFromBefore menyalin format dari lajur kiri.
+async function sisipLajur(sid, sheetIdMap, tab, kolum, arah, deps = {}) {
   const _getSheetIdMap = deps.getSheetIdMap || getSheetIdMap;
   const _batchUpdate = deps.batchUpdate || batchUpdate;
   const m = sheetIdMap || (await _getSheetIdMap(sid));
   const sheetId = m[tab];
   if (sheetId == null) throw new Error(`sheetId untuk tab '${tab}' tidak dijumpai`);
+  const startIndex = arah === 'before' ? kolum - 1 : kolum; // 0-based
   return _batchUpdate(sid, [{
     insertDimension: {
       range: {
         sheetId,
         dimension: 'COLUMNS',
-        startIndex: kolum - 1, // 0-based; insert sebelum kolum (1-based)
-        endIndex: kolum,
+        startIndex,
+        endIndex: startIndex + 1,
       },
       inheritFromBefore: true,
     },
@@ -307,6 +321,22 @@ function colToNum(letters) {
     n = n * 26 + (letters.charCodeAt(i) - 64);
   }
   return n;
+}
+
+// ── Fasa I: tulis header 'PERATUS\nMINGGUAN' ke lajur mingguan ──
+//   Meniru GAS kiraPeratusMingguanTab / kiraPeratusMingguanPeratusTab.
+//   rowsHeader = senarai baris (1-based) untuk tulis header.
+//     Tab T{n}/STAM: [rowHadir, rowJumlah, rowPeratus] (3 baris).
+//     PERATUS HARIANMINGGUAN: [1] (1 baris).
+//   Nama tab sentiasa dipetik (selamat untuk nama dengan ruang/aksara khas).
+async function tulisHdrMingguan(sid, tab, rowsHeader, kolum, deps = {}) {
+  const _updateRange = deps.updateRange || updateRange;
+  const L = colLetter(kolum);
+  const hasil = [];
+  for (const r of rowsHeader) {
+    hasil.push(_updateRange(sid, `'${tab}'!${L}${r}`, [['PERATUS\nMINGGUAN']], { valueInputOption: 'USER_ENTERED' }));
+  }
+  return Promise.all(hasil);
 }
 
 // Write-back nilai kelas ke tab tingkatan (Fasa G2: LIVE + cipta lajur).
@@ -402,12 +432,13 @@ export async function writeBackTabTingkatan(fields, deps = {}) {
 
 
 // ════════════════════════════════════════════════════════════
-//  PERATUS HARIANMINGGUAN + AGREGAT HARIAN (Fasa D) — DRY-RUN sahaja
+//  PERATUS HARIANMINGGUAN + AGREGAT HARIAN (Fasa D → Fasa H)
 //  - Sel peratus kelas + baris 20 (% sekolah) dalam PERATUS HARIANMINGGUAN.
 //  - Agregat harian tingkatan: T1–T5 baris 21 / STAM baris 16.
 //  - Nilai = pecahan (0.9), format sel 0.00% (IKUT GAS).
-//  - Agregat MINGGUAN: lihat Fasa D2.
-//  - Tiada tulisan LIVE (Fasa D kekal fail-safe).
+//  - Fasa H: LIVE write untuk HARIAN sahaja (cipta lajur tarikh + format 0.00%).
+//  - Agregat MINGGUAN: Fasa I (LIVE) — lihat writeBackMingguan.
+//  - LAPORAN_BULANAN: kekal FAIL-SAFE / LIVE_DEFERRED (Fasa E).
 // ════════════════════════════════════════════════════════════
 
 const TAB_PERATUS = 'PERATUS HARIANMINGGUAN';
@@ -447,7 +478,14 @@ export function kiraAgregatHarian(hariIni, roster) {
   return { sekolah: { hadir: sH, jumlah: sJ }, tingkatan };
 }
 
-// Write-back PERATUS HARIANMINGGUAN (sel kelas + % sekolah) + agregat harian tingkatan. DRY-RUN.
+// Write-back PERATUS HARIANMINGGUAN (sel kelas + % sekolah) + agregat harian tingkatan (Fasa H: LIVE).
+//   - dryRun=true  → bina sel + log sahaja (tiada API write).
+//   - dryRun=false → LIVE: cari/cipta lajur tarikh (ikut GAS _cariAtauBuatKolumPeratusTab),
+//                    tulis header tarikh (row 1), tulis sel peratus kelas + row 20 sekolah,
+//                    tulis agregat harian tab tingkatan, format sel PERATUS 0.00%.
+//   - PERATUS = pecahan nombor (0.9524), format sel 0.00% (bukan teks "95.24%").
+//   - Tidak menyentuh lajur PERATUS MINGGUAN (disisip sebelum MINGGUAN jika perlu).
+//   - deps: { readTab, updateRange, getSheetIdMap, batchUpdate } untuk ujian.
 export async function writeBackPeratusDanAgregat(fields, data = {}, deps = {}) {
   if (!config.writeback || !config.writeback.enabled) {
     return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED' };
@@ -456,64 +494,127 @@ export async function writeBackPeratusDanAgregat(fields, data = {}, deps = {}) {
   if (!sid) return { ok: false, skipped: true, reason: 'NO_SPREADSHEET_ID' };
 
   const _readTab = deps.readTab || readTab;
+  const _updateRange = deps.updateRange || updateRange;
   const agg = kiraAgregatHarian(data.hariIni || [], data.roster || []);
-  const sel = [];
 
+  // ── PERATUS HARIANMINGGUAN: cari/cipta lajur tarikh di row 1 ──
   const rowsP = await _readTab(sid, TAB_PERATUS);
-  const colP = cariLajurTarikh(rowsP, 1, fields.tarikh);
-  const adaP = colP > 0;
-  const LP = colLetter(adaP ? colP : ((rowsP[0] || []).length + 1));
+  let colP = cariLajurTarikh(rowsP, 1, fields.tarikh);
+  let sisipP = false;
+  let opP = 'UPDATE';
+  if (colP < 0) {
+    const keputusan = tentukanKolumBaru(rowsP, 1, fields.tarikh);
+    colP = keputusan.kolum;
+    sisipP = keputusan.sisip;
+    opP = sisipP ? 'INSERT_COLUMN+UPDATE' : 'CREATE_COLUMN+UPDATE';
+    if (!config.writeback.dryRun) {
+      if (sisipP) await sisipLajurSebelum(sid, null, TAB_PERATUS, colP, deps);
+      // Header tarikh di row 1 sahaja (IKUT GAS kemaskiniPeratusTab).
+      await _updateRange(sid, `'${TAB_PERATUS}'!${colLetter(colP)}1`,
+        [[fields.tarikh]], { valueInputOption: 'USER_ENTERED' });
+    }
+  }
+  const LP = colLetter(colP);
+
+  const selP = [];
   const rowKelas = ROW_PERATUS_TAB[fields.kelas];
   if (rowKelas) {
-    sel.push({ range: `'${TAB_PERATUS}'!${LP}${rowKelas}`, label: `PERATUS_KELAS(${fields.kelas})`,
+    selP.push({ range: `'${TAB_PERATUS}'!${LP}${rowKelas}`, label: `PERATUS_KELAS(${fields.kelas})`,
       value: pecahan(Number(fields.hadir) || 0, Number(fields.jumlah) || 0) });
   }
-  sel.push({ range: `'${TAB_PERATUS}'!${LP}${ROW_PERATUS_SEKOLAH}`, label: '% HARIAN SEKOLAH',
+  selP.push({ range: `'${TAB_PERATUS}'!${LP}${ROW_PERATUS_SEKOLAH}`, label: '% HARIAN SEKOLAH',
     value: pecahan(agg.sekolah.hadir, agg.sekolah.jumlah) });
 
+  // ── Agregat harian tab tingkatan (row peratus sekolah tingkatan) ──
   const found = cariTabTingkatan(fields.kelas);
-  let adaT = true, LT = null, rowAgg = null;
+  let opT = null, LT = null, selT = [];
   if (found) {
     const rowsT = await _readTab(sid, found.tab);
-    const colT = cariLajurTarikh(rowsT, found.cfg.rowHadir, fields.tarikh);
-    adaT = colT > 0;
-    LT = colLetter(adaT ? colT : ((rowsT[found.cfg.rowHadir - 1] || []).length + 1));
-    rowAgg = found.cfg.rowPeratus + found.cfg.kelas.length + 1;
-    const tg = agg.tingkatan[found.tab] || { hadir: 0, jumlah: 0 };
-    sel.push({ range: `${found.tab}!${LT}${rowAgg}`, label: `% HARIAN ${found.tab}`,
-      value: pecahan(tg.hadir, tg.jumlah) });
+    let colT = cariLajurTarikh(rowsT, found.cfg.rowHadir, fields.tarikh);
+    let sisipT = false;
+    if (colT < 0) {
+      // Lajur tarikh tiada di tab tingkatan → jangan cipta (Fasa H hanya baca; Fasa G2 cipta
+      // apabila guru simpan kelas itu sendiri). Agregat harian perlukan lajur tarikh wujud.
+      opT = 'SKIP_TINGKATAN_TIADA_LAJUR';
+    } else {
+      opT = 'UPDATE';
+      LT = colLetter(colT);
+      const rowAgg = found.cfg.rowPeratus + found.cfg.kelas.length + 1; // T1–T5 row 21, STAM row 16
+      const tg = agg.tingkatan[found.tab] || { hadir: 0, jumlah: 0 };
+      selT.push({ range: `${found.tab}!${LT}${rowAgg}`, label: `% HARIAN ${found.tab}`,
+        value: pecahan(tg.hadir, tg.jumlah) });
+    }
   }
 
-  const op = (adaP && adaT) ? 'UPDATE' : 'CREATE_COLUMN+UPDATE';
-
+  // ── Dry-run: log sahaja ──
   if (config.writeback.dryRun) {
     const baris = [
       '[WRITEBACK-DRYRUN]', `Spreadsheet: ${sid}`,
-      'Modul: PERATUS HARIANMINGGUAN + AGREGAT HARIAN', `Tarikh: ${fields.tarikh}`,
-      adaP ? `Lajur tarikh '${TAB_PERATUS}': ${LP} (dijumpai)` : `Lajur tarikh '${TAB_PERATUS}': ${LP} (TIADA → cadang; TIDAK ditulis)`,
+      'Modul: PERATUS HARIANMINGGUAN + AGREGAT HARIAN (Fasa H)', `Tarikh: ${fields.tarikh}`,
+      opP === 'UPDATE'
+        ? `Lajur tarikh '${TAB_PERATUS}': ${LP} (dijumpai)`
+        : `Lajur tarikh '${TAB_PERATUS}': ${LP} (${sisipP ? 'sisip sebelum MINGGUAN' : 'cipta di hujung'})`,
+      `Operation PERATUS: ${opP}`,
     ];
-    if (found) baris.push(adaT ? `Lajur tarikh ${found.tab}: ${LT} (dijumpai)` : `Lajur tarikh ${found.tab}: ${LT} (TIADA → cadang; TIDAK ditulis)`);
-    baris.push(`Operation: ${op}`);
-    sel.forEach((c) => baris.push(`  ${c.range} = ${c.label} : ${c.value}`));
+    if (found) baris.push(opT === 'UPDATE'
+      ? `Agregat ${found.tab}: ${LT} (dijumpai)`
+      : `Agregat ${found.tab}: SKIP — lajur tarikh belum wujud di tab tingkatan`);
+    baris.push('-- PERATUS HARIANMINGGUAN --');
+    selP.forEach((c) => baris.push(`  ${c.range} = ${c.label} : ${c.value}`));
+    if (selT.length) {
+      baris.push(`-- ${found.tab} agregat harian --`);
+      selT.forEach((c) => baris.push(`  ${c.range} = ${c.label} : ${c.value}`));
+    }
     baris.push('PERATUS = pecahan nombor (format sel 0.00%), bukan string.');
     baris.push('Tiada API write dipanggil.');
     console.log(baris.join('\n'));
-    return { ok: true, dryRun: true, op, sel, lajurPeratus: LP, adaLajurPeratus: adaP, lajurTingkatan: LT, adaLajurTingkatan: adaT, agregat: agg };
+    return { ok: true, dryRun: true, opP, opT, selP, selT, lajurPeratus: LP, adaLajurPeratus: opP === 'UPDATE', lajurTingkatan: LT, agregat: agg };
   }
-  console.warn('[WRITEBACK] PERATUS/agregat: tulisan LIVE ditangguh — dilangkau (non-fatal).');
-  return { ok: false, skipped: true, reason: 'LIVE_DEFERRED', op, sel };
+
+  // ── LIVE write PERATUS HARIANMINGGUAN ──
+  const hasilP = [];
+  for (const c of selP) {
+    hasilP.push(await _updateRange(sid, c.range, [[c.value]], { valueInputOption: 'USER_ENTERED' }));
+  }
+  // Format sel peratus 0.00% untuk SEMUA sel PERATUS HARIANMINGGUAN yang baru ditulis.
+  for (const c of selP) {
+    try { await tetapkanFormatPeratus(sid, null, TAB_PERATUS, c.range, deps); }
+    catch (e) { console.warn(`[WRITEBACK] Format PERATUS gagal (nilai tetap tersimpan): ${(e && e.message) || e}`); }
+  }
+
+  // ── LIVE write agregat harian tab tingkatan (jika lajur wujud) ──
+  const hasilT = [];
+  if (opT === 'UPDATE') {
+    for (const c of selT) {
+      hasilT.push(await _updateRange(sid, c.range, [[c.value]], { valueInputOption: 'USER_ENTERED' }));
+      try { await tetapkanFormatPeratus(sid, null, found.tab, c.range, deps); }
+      catch (e) { console.warn(`[WRITEBACK] Format agregat ${found.tab} gagal: ${(e && e.message) || e}`); }
+    }
+  }
+
+  const catatanP = opP === 'UPDATE'
+    ? `lajur ${LP} (UPDATE)`
+    : `lajur ${LP} (${sisipP ? 'sisip sebelum MINGGUAN' : 'cipta di hujung'} + header row 1)`;
+  console.log(`[WRITEBACK] PERATUS HARIANMINGGUAN BERJAYA — kelas ${fields.kelas}, tarikh ${fields.tarikh}, ${catatanP} (${selP.length} sel + format 0.00%).`);
+  if (found && opT === 'UPDATE') {
+    console.log(`[WRITEBACK] Agregat harian ${found.tab} BERJAYA — ${selT.length} sel.`);
+  } else if (found) {
+    console.log(`[WRITEBACK] Agregat harian ${found.tab}: SKIP (lajur tarikh belum wujud di tab tingkatan — non-fatal).`);
+  }
+  return { ok: true, dryRun: false, opP, opT, selP, selT, hasilP, hasilT, lajurPeratus: LP, lajurTingkatan: LT, agregat: agg };
 }
 
 
 // ════════════════════════════════════════════════════════════
-//  AGREGAT MINGGUAN + LAJUR PERATUS MINGGUAN (Fasa D2) — DRY-RUN sahaja
+//  AGREGAT MINGGUAN + LAJUR PERATUS MINGGUAN (Fasa D2 → Fasa I)
 //  Tiru GAS: cariJumaat, tarikhMingguDari, kiraPeratusMingguanTab,
-//            kiraPeratusMingguanPeratusTab, janaPeratusMingguanUntuk.
+//            kiraPeratusMingguanPeratusTab.
 //  - Minggu = Isnin–Jumaat; hanya dicetus jika hari simpan Isnin–Jumaat.
 //  - Nilai kelas = ΣHadir(minggu)/ΣJumlah(minggu) — TIADA fallback (ikut GAS).
 //  - Sekolah = Σ semua kelas (minggu) → PERATUS HARIANMINGGUAN baris 20.
 //  - Tab T{n}: hanya sel kelas (GAS tidak tulis baris sekolah/tingkatan di tab).
-//  - Lajur MINGGUAN = selepas lajur tarikh TERAKHIR minggu; jika tiada → CREATE (tidak ditulis).
+//  - Fasa I: LIVE. Cipta/sisip lajur PERATUS MINGGUAN selepas tarikh terakhir minggu;
+//    tulis header PERATUS\nMINGGUAN + sel nilai + format 0.00%.
 // ════════════════════════════════════════════════════════════
 
 const _RE_TARIKH = /^\d{2}-\d{2}-\d{4}$/;
@@ -574,8 +675,13 @@ function _lajurTarikhTerakhirMinggu(rows, rowHeader, tarikhMinggu) {
   return kolum;
 }
 
-// Write-back agregat MINGGUAN (PERATUS HARIANMINGGUAN semua kelas + sekolah; tab T{n} sel kelas). DRY-RUN.
+// Write-back agregat MINGGUAN (Fasa I: LIVE).
 //   data = { mg: kiraMinggu(...), mingguRows: [{class_kod, tingkatan, hadir, jumlah}] (jumlah Isnin–Jumaat) }.
+//   - Cari lajur tarikh TERAKHIR minggu di PERATUS HARIANMINGGUAN (row 1) + tab tingkatan (rowHadir).
+//   - Cari/reuse lajur MINGGUAN selepas tarikh terakhir; jika tiada → insertColumnAfter (GAS).
+//   - Tulis header PERATUS\nMINGGUAN (tab tingkatan: 3 row; PERATUS HARIANMINGGUAN: row 1).
+//   - Tulis sel nilai mingguan (pecahan) + format 0.00%.
+//   - Sabtu/Ahad → SKIP (mg.hariMinggu=false).
 export async function writeBackMingguan(fields, data = {}, deps = {}) {
   if (!config.writeback || !config.writeback.enabled) {
     return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED' };
@@ -584,9 +690,11 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
   if (!sid) return { ok: false, skipped: true, reason: 'NO_SPREADSHEET_ID' };
 
   const mg = data.mg || kiraMinggu(fields.tarikh);
+  // GAS hanya kira mingguan jika Isnin–Jumaat. Sabtu/Ahad → SKIP (BUKAN_ISNIN_JUMAAT).
   if (!mg.hariMinggu) return { ok: false, skipped: true, reason: 'BUKAN_ISNIN_JUMAAT', mg };
 
   const _readTab = deps.readTab || readTab;
+  const _updateRange = deps.updateRange || updateRange;
 
   // Peta mingguan per kelas (DB; TIADA fallback) + jumlah sekolah.
   const wk = new Map();
@@ -600,12 +708,13 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
   const selP = [];
   const selT = [];
 
-  // ── PERATUS HARIANMINGGUAN (tarikh di baris 1; scan MINGGUAN sehingga jumpa/tarikh) ──
+  // ── PERATUS HARIANMINGGUAN (tarikh di baris 1) ──
   const rowsP = await _readTab(sid, TAB_PERATUS);
   const hdr1 = rowsP[0] || [];
   const kTT = _lajurTarikhTerakhirMinggu(rowsP, 1, mg.tarikhMinggu);
   let infoP = { ada: false };
   if (kTT > 0) {
+    // Cari lajur MINGGUAN sedia ada (scan dari kTT+1 hingga jumpa MINGGUAN atau tarikh lain).
     let kM = -1;
     for (let col = kTT + 1; col <= hdr1.length; col++) {
       const v = normTarikh(hdr1[col - 1]);
@@ -613,7 +722,20 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
       if (_RE_TARIKH.test(v)) break;
     }
     const adaM = kM > 0;
-    const useCol = adaM ? kM : kTT + 1;
+    let useCol;
+    if (!config.writeback.dryRun) {
+      if (!adaM) {
+        // GAS insertColumnAfter(kolumTarikhTerakhir) → lajur baru di kTT+1.
+        await sisipLajurSelepas(sid, null, TAB_PERATUS, kTT, deps);
+        useCol = kTT + 1;
+        // Tulis header PERATUS\nMINGGUAN ke row 1 sahaja (GAS kiraPeratusMingguanPeratusTab).
+        await tulisHdrMingguan(sid, TAB_PERATUS, [1], useCol, deps);
+      } else {
+        useCol = kM;
+      }
+    } else {
+      useCol = adaM ? kM : kTT + 1;
+    }
     const L = colLetter(useCol);
     infoP = { ada: true, adaM, L, useCol, kTT };
     for (const [k, row] of Object.entries(ROW_PERATUS_TAB)) {
@@ -627,7 +749,7 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
     }
   }
 
-  // ── Tab T{n}/STAM kelas yang disimpan (tarikh di rowHadir; MINGGUAN = lajur sejurus selepas) ──
+  // ── Tab T{n}/STAM kelas yang disimpan ──
   const found = cariTabTingkatan(fields.kelas);
   let infoT = { tab: null };
   if (found) {
@@ -635,16 +757,31 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
     const hdrH = rowsT[found.cfg.rowHadir - 1] || [];
     const kTTt = _lajurTarikhTerakhirMinggu(rowsT, found.cfg.rowHadir, mg.tarikhMinggu);
     if (kTTt > 0) {
+      // Cari MINGGUAN sejurus selepas tarikh terakhir (GAS: colSelepas = kTTt+1).
       let kMt = -1;
       const colSelepas = kTTt + 1;
       if (colSelepas <= hdrH.length && normTarikh(hdrH[colSelepas - 1]).indexOf('MINGGUAN') !== -1) kMt = colSelepas;
       const adaMt = kMt > 0;
-      const useColT = adaMt ? kMt : kTTt + 1;
+      let useColT;
+      if (!config.writeback.dryRun) {
+        if (!adaMt) {
+          // GAS insertColumnAfter(kolumTarikhTerakhir) → lajur baru di kTTt+1.
+          await sisipLajurSelepas(sid, null, found.tab, kTTt, deps);
+          useColT = kTTt + 1;
+          // Tulis header PERATUS\nMINGGUAN ke 3 row (rowHadir/rowJumlah/rowPeratus) — GAS kiraPeratusMingguanTab.
+          await tulisHdrMingguan(sid, found.tab, [found.cfg.rowHadir, found.cfg.rowJumlah, found.cfg.rowPeratus], useColT, deps);
+        } else {
+          useColT = kMt;
+        }
+      } else {
+        useColT = adaMt ? kMt : kTTt + 1;
+      }
       const LT = colLetter(useColT);
       infoT = { tab: found.tab, ada: true, adaM: adaMt, L: LT, useCol: useColT, kTT: kTTt };
       found.cfg.kelas.forEach((k, i) => {
         const d = wk.get(k);
         if (d && d.jumlah > 0) {
+          // GAS: row peratus kelas = rowPeratus + 1 + i (T1–T5: 18/19/20; STAM: 14/15).
           selT.push({ range: `${found.tab}!${LT}${found.cfg.rowPeratus + 1 + i}`, label: `MINGGUAN(${k})`, value: d.hadir / d.jumlah });
         }
       });
@@ -656,6 +793,7 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
   const adaSemua = (infoP.ada && infoP.adaM) && (!found || (infoT.ada && infoT.adaM));
   const op = adaSemua ? 'UPDATE' : 'CREATE_WEEKLY_COLUMN+UPDATE';
 
+  // ── Dry-run: log sahaja ──
   if (config.writeback.dryRun) {
     const baris = [
       '[WRITEBACK-DRYRUN]', `Spreadsheet: ${sid}`,
@@ -666,13 +804,13 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
     if (infoP.ada) {
       baris.push(infoP.adaM
         ? `'${TAB_PERATUS}' lajur MINGGUAN: ${infoP.L} (wujud)`
-        : `'${TAB_PERATUS}' lajur MINGGUAN: ${infoP.L} (TIADA → CREATE selepas lajur tarikh terakhir minggu; TIDAK ditulis)`);
+        : `'${TAB_PERATUS}' lajur MINGGUAN: ${infoP.L} (TIADA → CREATE selepas lajur tarikh terakhir minggu)`);
     } else {
       baris.push(`'${TAB_PERATUS}': tiada lajur tarikh minggu ini → mingguan dilangkau (ikut GAS).`);
     }
     if (found) {
       if (infoT.ada) {
-        baris.push(infoT.adaM ? `${found.tab} lajur MINGGUAN: ${infoT.L} (wujud)` : `${found.tab} lajur MINGGUAN: ${infoT.L} (TIADA → CREATE; TIDAK ditulis)`);
+        baris.push(infoT.adaM ? `${found.tab} lajur MINGGUAN: ${infoT.L} (wujud)` : `${found.tab} lajur MINGGUAN: ${infoT.L} (TIADA → CREATE)`);
       } else {
         baris.push(`${found.tab}: tiada lajur tarikh minggu ini → mingguan dilangkau (ikut GAS).`);
       }
@@ -689,8 +827,27 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
     console.log(baris.join('\n'));
     return { ok: true, dryRun: true, op, mg, selP, selT, infoP, infoT };
   }
-  console.warn('[WRITEBACK] Mingguan: tulisan LIVE ditangguh — dilangkau (non-fatal).');
-  return { ok: false, skipped: true, reason: 'LIVE_DEFERRED', op };
+
+  // ── LIVE write PERATUS HARIANMINGGUAN ──
+  const hasilP = [];
+  for (const c of selP) {
+    hasilP.push(await _updateRange(sid, c.range, [[c.value]], { valueInputOption: 'USER_ENTERED' }));
+    try { await tetapkanFormatPeratus(sid, null, TAB_PERATUS, c.range, deps); }
+    catch (e) { console.warn(`[WRITEBACK] Format MINGGUAN gagal (nilai tetap tersimpan): ${(e && e.message) || e}`); }
+  }
+
+  // ── LIVE write tab tingkatan (sel kelas sahaja; bukan baris sekolah) ──
+  const hasilT = [];
+  if (found && infoT.ada) {
+    for (const c of selT) {
+      hasilT.push(await _updateRange(sid, c.range, [[c.value]], { valueInputOption: 'USER_ENTERED' }));
+      try { await tetapkanFormatPeratus(sid, null, found.tab, c.range, deps); }
+      catch (e) { console.warn(`[WRITEBACK] Format MINGGUAN ${found.tab} gagal: ${(e && e.message) || e}`); }
+    }
+  }
+
+  console.log(`[WRITEBACK] MINGGUAN BERJAYA — kelas ${fields.kelas}, minggu ${mg.tarikhMinggu[0]}→${mg.tarikhMinggu[4]}, PERATUS HARIANMINGGUAN ${infoP.ada ? `lajur ${infoP.L} (${infoP.adaM ? 'UPDATE' : 'CREATE'})` : 'SKIP'} (${selP.length} sel)${found && infoT.ada ? `, ${found.tab} lajur ${infoT.L} (${infoT.adaM ? 'UPDATE' : 'CREATE'}) (${selT.length} sel)` : ''}.`);
+  return { ok: true, dryRun: false, op, mg, selP, selT, infoP, infoT, hasilP, hasilT };
 }
 
 
