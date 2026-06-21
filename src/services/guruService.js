@@ -1,6 +1,6 @@
 import { pool } from '../db/pool.js';
 import { listKelasKodForUser } from './assignmentService.js';
-import { writeBackDataKehadiran, writeBackTabTingkatan, writeBackPeratusDanAgregat, kiraMinggu, writeBackMingguan } from './sheetWritebackService.js';
+import { writeBackDataKehadiran, writeBackTabTingkatan, writeBackPeratusDanAgregat, kiraMinggu, writeBackMingguan, infoBulan, writeBackLaporanBulanan } from './sheetWritebackService.js';
 
 // ── Tarikh & masa "hari ini" ikut zon Asia/Kuala_Lumpur (server authoritative) ──
 function todayKL() {
@@ -206,6 +206,25 @@ export async function simpanKehadiran(payload) {
       }
     } catch (e) {
       console.warn('[WRITEBACK] Mingguan gagal (DB tetap berjaya):', (e && e.message) || e);
+    }
+
+    // Fasa E: LAPORAN_BULANAN (hanya hari terakhir bulan) (NON-FATAL; dry-run; hormat WRITEBACK_*).
+    try {
+      const lb = infoBulan(t.display);
+      let bulanData = [], bilHari = 0;
+      if (lb.isAkhir) {
+        bulanData = (await client.query(
+          `SELECT a.class_kod, SUM(a.hadir)::int AS hadir, SUM(a.jumlah)::int AS jumlah
+             FROM attendance_records a
+            WHERE a.tarikh >= $1 AND a.tarikh < $2
+            GROUP BY a.class_kod`, [lb.mulaIso, lb.tamatIso])).rows;
+        bilHari = (await client.query(
+          `SELECT COUNT(DISTINCT a.tarikh)::int AS n FROM attendance_records a
+            WHERE a.tarikh >= $1 AND a.tarikh < $2`, [lb.mulaIso, lb.tamatIso])).rows[0].n;
+      }
+      await writeBackLaporanBulanan({ tarikh: t.display }, { bulanData, bilHari });
+    } catch (e) {
+      console.warn('[WRITEBACK] LAPORAN_BULANAN gagal (DB tetap berjaya):', (e && e.message) || e);
     }
 
     return {

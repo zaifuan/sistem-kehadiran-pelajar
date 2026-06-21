@@ -501,3 +501,127 @@ export async function writeBackMingguan(fields, data = {}, deps = {}) {
   console.warn('[WRITEBACK] Mingguan: tulisan LIVE ditangguh — dilangkau (non-fatal).');
   return { ok: false, skipped: true, reason: 'LIVE_DEFERRED', op };
 }
+
+
+// ════════════════════════════════════════════════════════════
+//  LAPORAN_BULANAN (Fasa E) — DRY-RUN sahaja
+//  Tiru GAS: semakDanSimpanBulanan + simpanLaporanBulananSheets.
+//  - Dijana HANYA pada HARI TERAKHIR BULAN (new Date(tahun,bulan,0)).
+//  - 22 lajur: A BULAN/TAHUN, B BIL HARI, C–S 17 kelas (% atau '-'),
+//    T JUMLAH HADIR, U JUMLAH PELAJAR, V PERATUS SEKOLAH.
+//  - Upsert ikut labelBulan (lajur A): jumpa → UPDATE baris sama; tiada → APPEND (lastRow+1).
+//  - Tiada tulisan LIVE.
+// ════════════════════════════════════════════════════════════
+
+const TAB_LAPORAN = 'LAPORAN_BULANAN';
+const BULAN_NAMA = ['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun',
+  'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'];
+// Urutan kelas untuk lajur C–S (IKUT GAS urutanKelas / header).
+const URUTAN_KELAS_BULANAN = ['1K', '1A', '1M', '2K', '2A', '2M', '3K', '3A', '3M',
+  '4K', '4A', '4M', '5K', '5A', '5M', 'STAMLULU', 'STAMMARJAN'];
+const TAJUK_BULANAN = ['BULAN/TAHUN', 'BIL HARI', ...URUTAN_KELAS_BULANAN,
+  'JUMLAH HADIR', 'JUMLAH PELAJAR', 'PERATUS SEKOLAH'];
+
+// Maklumat bulan untuk satu tarikh simpan (DD-MM-YYYY) — termasuk julat ISO & status hari terakhir.
+export function infoBulan(tarikhDisplay) {
+  const [d, m, y] = String(tarikhDisplay).split('-').map(Number);
+  const hariAkhir = new Date(Date.UTC(y, m, 0)).getUTCDate(); // hari terakhir bulan (m 1-indeks)
+  const isAkhir = d === hariAkhir;
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return {
+    isAkhir, hari: d, bulan: m, tahun: y, hariAkhir,
+    labelBulan: `${BULAN_NAMA[m - 1]} ${y}`,
+    mulaIso: `${y}-${String(m).padStart(2, '0')}-01`,
+    tamatIso: `${ny}-${String(nm).padStart(2, '0')}-01`, // first day next month (eksklusif)
+  };
+}
+
+// Bina baris LAPORAN_BULANAN (22 lajur) IKUT GAS.
+//   bulanData: [{class_kod, hadir, jumlah}] (ΣHadir/ΣJumlah sebulan)   bilHari: hari berbeza
+export function buildLaporanBulananRow(inf, bulanData, bilHari) {
+  const map = new Map((bulanData || []).map((r) => [r.class_kod, r]));
+  let totalH = 0, totalJ = 0;
+  const peratusKelas = {};
+  for (const k of URUTAN_KELAS_BULANAN) {
+    const r = map.get(k);
+    const h = r ? Number(r.hadir) || 0 : 0;
+    const j = r ? Number(r.jumlah) || 0 : 0;
+    totalH += h; totalJ += j;
+    peratusKelas[k] = j > 0 ? (h / j * 100).toFixed(2) + '%' : '-';
+  }
+  const peratusSekolah = totalJ > 0 ? (totalH / totalJ * 100).toFixed(2) + '%' : '-';
+  const row = [inf.labelBulan, Number(bilHari) || 0,
+    ...URUTAN_KELAS_BULANAN.map((k) => peratusKelas[k]),
+    totalH, totalJ, peratusSekolah];
+  return { row, totalH, totalJ, peratusSekolah };
+}
+
+function logLaporanDryRun(sid, op, range, inf, row) {
+  const baris = [
+    '[WRITEBACK-DRYRUN]', `Spreadsheet: ${sid}`, 'Modul: LAPORAN_BULANAN',
+    `Bulan: ${inf.labelBulan} (HARI TERAKHIR BULAN = ${inf.hariAkhir})`,
+    `Operation: ${op}`, `Range: ${range}`, 'Payload (22 lajur):',
+  ];
+  row.forEach((v, i) => baris.push(`  ${colLetter(i + 1)} ${TAJUK_BULANAN[i]} : ${v}`));
+  baris.push('Bulan sama dijana semula → UPDATE baris sama (bukan pendua).');
+  baris.push('Tiada API write dipanggil.');
+  console.log(baris.join('\n'));
+}
+
+// Write-back LAPORAN_BULANAN. DRY-RUN sahaja. data = { bulanData, bilHari }.
+export async function writeBackLaporanBulanan(fields, data = {}, deps = {}) {
+  if (!config.writeback || !config.writeback.enabled) {
+    return { ok: false, skipped: true, reason: 'WRITEBACK_DISABLED' };
+  }
+  const sid = config.writeback.spreadsheetId;
+  if (!sid) return { ok: false, skipped: true, reason: 'NO_SPREADSHEET_ID' };
+
+  const inf = infoBulan(fields.tarikh);
+
+  // GAS: hanya jana pada hari terakhir bulan. Hari biasa → SKIP.
+  if (!inf.isAkhir) {
+    if (config.writeback.dryRun) {
+      console.log([
+        '[WRITEBACK-DRYRUN]', 'Modul: LAPORAN_BULANAN', `Tarikh: ${fields.tarikh}`,
+        `SKIP — bukan hari terakhir bulan (hari terakhir ${inf.labelBulan} = ${inf.hariAkhir}).`,
+        'Tiada API write dipanggil.',
+      ].join('\n'));
+    }
+    return { ok: false, skipped: true, reason: 'BUKAN_HARI_TERAKHIR_BULAN', inf };
+  }
+
+  const bilHari = Number(data.bilHari) || 0;
+  // GAS: hariSet.size === 0 → tiada data, tidak tulis.
+  if (bilHari === 0) {
+    if (config.writeback.dryRun) {
+      console.log(['[WRITEBACK-DRYRUN]', 'Modul: LAPORAN_BULANAN',
+        `${inf.labelBulan}: tiada data rekod bulan ini — dilangkau (ikut GAS).`,
+        'Tiada API write dipanggil.'].join('\n'));
+    }
+    return { ok: false, skipped: true, reason: 'TIADA_DATA_BULAN', inf };
+  }
+
+  const { row } = buildLaporanBulananRow(inf, data.bulanData || [], bilHari);
+  const lastColL = colLetter(row.length); // V (22)
+
+  const _readTab = deps.readTab || readTab;
+  const rows = await _readTab(sid, TAB_LAPORAN);
+
+  // Cari baris ikut labelBulan di lajur A (mulai baris 2). Jumpa → UPDATE; tiada → APPEND (lastRow+1).
+  let rowTarget = -1;
+  for (let i = 1; i < rows.length; i++) {
+    if (String((rows[i] || [])[0] || '').trim() === inf.labelBulan) { rowTarget = i + 1; break; }
+  }
+  const adaBaris = rowTarget > 0;
+  const barisGuna = adaBaris ? rowTarget : (rows.length + 1);
+  const range = `${TAB_LAPORAN}!A${barisGuna}:${lastColL}${barisGuna}`;
+  const op = adaBaris ? 'UPDATE' : 'APPEND';
+
+  if (config.writeback.dryRun) {
+    logLaporanDryRun(sid, op, range, inf, row);
+    return { ok: true, dryRun: true, op, range, row, inf };
+  }
+  console.warn('[WRITEBACK] LAPORAN_BULANAN: tulisan LIVE ditangguh — dilangkau (non-fatal).');
+  return { ok: false, skipped: true, reason: 'LIVE_DEFERRED', op, range };
+}
