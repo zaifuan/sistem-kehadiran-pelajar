@@ -266,6 +266,49 @@ async function tulisHdrTarikh(sid, tab, cfg, tarikh, kolum, deps = {}) {
   return Promise.all(hasil);
 }
 
+// ── Fasa G2.1: tetapkan format sel PERATUS ke '0.00%' (meniru GAS setNumberFormat('0.00%')) ──
+//   Nilai sel kekal sebagai nombor pecahan (0.9333), tetapi paparan Sheets jadi 93.33%.
+//   selA1 = alamat sel PERATUS (cth 'T4!B20'). Gunakan batchUpdate repeatCell.
+//   Non-fatal: ralat format tidak menggugurkan simpanan — pembungkus guruService try/catch.
+async function tetapkanFormatPeratus(sid, sheetIdMap, tab, selA1, deps = {}) {
+  const _getSheetIdMap = deps.getSheetIdMap || getSheetIdMap;
+  const _batchUpdate = deps.batchUpdate || batchUpdate;
+  const m = sheetIdMap || (await _getSheetIdMap(sid));
+  const sheetId = m[tab];
+  if (sheetId == null) throw new Error(`sheetId untuk tab '${tab}' tidak dijumpai`);
+
+  // Tukar selA1 'T4!B20' → kolum 2, baris 20 (1-based) → GridCoordinate 0-based.
+  const m2 = /^([A-Za-z]+)(\d+)$/.exec(selA1.split('!').pop());
+  if (!m2) throw new Error(`selA1 tidak sah: ${selA1}`);
+  const kolum = colToNum(m2[1]);           // 1-based
+  const baris = parseInt(m2[2], 10);       // 1-based
+
+  return _batchUpdate(sid, [{
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: baris - 1, endRowIndex: baris,         // 0-based
+        startColumnIndex: kolum - 1, endColumnIndex: kolum,   // 0-based
+      },
+      cell: {
+        userEnteredFormat: {
+          numberFormat: { type: 'PERCENT', pattern: '0.00%' },
+        },
+      },
+      fields: 'userEnteredFormat.numberFormat',
+    },
+  }]);
+}
+
+// Tukar huruf lajur A1 (A, B, …, Z, AA) → nombor 1-based.
+function colToNum(letters) {
+  let n = 0;
+  for (let i = 0; i < letters.length; i++) {
+    n = n * 26 + (letters.charCodeAt(i) - 64);
+  }
+  return n;
+}
+
 // Write-back nilai kelas ke tab tingkatan (Fasa G2: LIVE + cipta lajur).
 //   - dryRun=true  → bina 3 sel + log sahaja (tiada API write).
 //   - dryRun=false → LIVE: JIKA lajur tarikh wujud → tulis 3 sel (UPDATE).
@@ -338,11 +381,23 @@ export async function writeBackTabTingkatan(fields, deps = {}) {
     const r = await _updateRange(sid, c.range, [[c.value]], { valueInputOption: 'USER_ENTERED' });
     hasil.push(r);
   }
+
+  // ── Fasa G2.1: tetapkan format sel PERATUS ke '0.00%' supaya paparan Sheets = 93.33%
+  //    (nilai kekal pecahan 0.9333). Berlaku untuk UPDATE & CREATE_COLUMN.
+  let formatHasil = null;
+  const selPeratus = sel.find((c) => c.label === 'PERATUS');
+  try {
+    formatHasil = await tetapkanFormatPeratus(sid, null, tab, selPeratus.range, deps);
+  } catch (e) {
+    // Non-fatal: nilai sudah ditulis; format gagal tidak menggugurkan simpanan.
+    console.warn(`[WRITEBACK] Format PERATUS gagal (nilai tetap tersimpan): ${(e && e.message) || e}`);
+  }
+
   const catatan = op === 'UPDATE'
     ? `lajur ${L} (3 sel)`
     : `lajur ${L} (${sisip ? 'sisip sebelum MINGGUAN' : 'cipta di hujung'} + header 3 baris + 3 sel)`;
   console.log(`[WRITEBACK] Tab tingkatan ${tab} BERJAYA — kelas ${fields.kelas}, tarikh ${fields.tarikh}, ${catatan}.`);
-  return { ok: true, dryRun: false, tab, op, lajur: L, adaLajur, sisip, sel, hasil };
+  return { ok: true, dryRun: false, tab, op, lajur: L, adaLajur, sisip, sel, hasil, formatHasil };
 }
 
 
