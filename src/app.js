@@ -41,7 +41,12 @@ export function buatApp() {
   app.use(morgan('tiny'));
 
   // ── Sesi (Fasa 8) — store dalam PostgreSQL (tahan restart) ──
-  // Dilayan di LAN melalui HTTP, jadi cookie `secure:false` (selaras nota CSP/UIR di atas).
+  // T-3: cookie.secure kini production-aware ('auto'). express-session
+  // menetapkan bendera `Secure` berdasarkan protokol request semasa
+  // (req.protocol, yang betul kerana trust proxy=1 di bawah):
+  //   • Local/dev HTTP        → Secure TIDAK ditetapkan → cookie dihantar, login OK.
+  //   • Production + HTTPS/proxy → Secure ditetapkan → cookie HANYA melalui HTTPS.
+  // httpOnly & sameSite kekal selamat (lihat bawah).
   const PgStore = connectPgSimple(session);
   app.set('trust proxy', 1);
   app.use(
@@ -53,9 +58,9 @@ export function buatApp() {
       saveUninitialized: false,
       rolling: true,
       cookie: {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: false,            // LAN HTTP — JANGAN true (cookie akan digugurkan)
+        httpOnly: true,            // kekal: JS tak boleh baca cookie (anti XSS theft)
+        sameSite: 'lax',           // kekal: halang CSRF rentas tapak asas
+        secure: 'auto',            // T-3: HTTPS-aware (auto ikut req.protocol)
         maxAge: config.session.maxAgeMs,
       },
     })
