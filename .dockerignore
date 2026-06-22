@@ -1,0 +1,92 @@
+# ════════════════════════════════════════════════════════════
+#  .dockerignore — kawal fail yang disalin ke dalam imej Docker
+#  oleh arahan `COPY . .` dalam Dockerfile.
+#
+#  Tujuan: HALANG fail sensitif & fail tidak diperlukan runtime
+#  daripada terbakar ke dalam imej (yang boleh di-push/didarab).
+#
+#  Fail RAHSIA yang dikecualikan:
+#    - .env / .env.*      → mengandungi SESSION_SECRET, password, token
+#    - secrets/           → folder kelayakan (service account Google)
+#      NOTE: secrets/ dipasang sebagai volume read-only oleh
+#            docker-compose (`./secrets:/app/secrets:ro`), jadi
+#            ia TIDAK perlu wujud di dalam imej.
+#    - **/service-account.json → kunci peribadi Google (di mana sahaja)
+#
+#  Fail yang TIDAK dikecualikan (diperlukan runtime / Dockerfile):
+#    - package.json, package-lock.json  → `COPY package*.json ./`
+#    - src/                             → kod backend
+#    - public/                          → frontend statik (Express static)
+#    - db/schema.sql                    → dibaca oleh src/db/migrate.js
+# ════════════════════════════════════════════════════════════
+
+# ── Fail rahsia & persekitaran ──
+.env
+.env.*
+!.env.example
+
+# ── Kelayakan / kunci peribadi (di mana sahaja dalam repo) ──
+secrets/
+**/service-account.json
+**/*.pem
+**/*.key
+
+# ── Dependencies (dibina di dalam container) ──
+node_modules/
+**/node_modules/
+
+# ── Log npm/yarn ──
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Metadata Git & CI ──
+.git/
+.gitignore
+.github/
+.gitlab/
+.gitattributes
+
+# ── Direktori build / artifak ujian ──
+coverage/
+.nyc_output/
+dist/
+build/
+out/
+tmp/
+temp/
+.cache/
+.parcel-cache/
+
+# ── Fail log umum ──
+*.log
+
+# ── Fail backup / arkib ──
+*.backup
+*.bak
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ── Fail sistem / editor ──
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ── Fail Docker itu sendiri (tidak diperlukan di dalam imej) ──
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# ── Dokumentasi & README (tidak diperlukan runtime) ──
+README.md
+docs/
+*.md
+!node_modules/**/*.md
