@@ -4,11 +4,14 @@
 import { Router } from 'express';
 import { sahkanLogin, tukarKataLaluan } from '../services/authService.js';
 import { requireAuth } from '../middleware/auth.js';
+import { rateLimitLogin } from '../middleware/rateLimitLogin.js';
 
 export const authRouter = Router();
 
 // POST /api/auth/login { username, kata_laluan }
-authRouter.post('/login', async (req, res) => {
+// T-4: rate-limit khusus endpoint ini (anti brute-force). Guru (/api/guru/*)
+//      TIDAK terjejas — middleware ini dipasang sini sahaja, bukan di app.js.
+authRouter.post('/login', rateLimitLogin, async (req, res) => {
   try {
     const { username, kata_laluan } = req.body || {};
     const user = await sahkanLogin(username, kata_laluan);
