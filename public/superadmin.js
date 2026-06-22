@@ -517,25 +517,7 @@ async function loadTelegram() {
             <div class="row-sub">Chat ID: ${esc(t.chat_mask || 'Tidak ditetapkan')}</div>
           </div>${badge}
         </div></div>
-      </div>
-
-      <div class="block">
-        <div class="block-head"><h2>Tetapan Sambungan</h2></div>
-        <div class="card form-card">
-          <div class="field">
-            <label for="tg-token">Bot Token ${t.token_set ? '<span class="lbl-opt">(tersimpan — kosongkan jika tidak ubah)</span>' : ''}</label>
-            <input id="tg-token" type="password" class="inp" autocomplete="off" placeholder="${t.token_set ? '•••••• (tersimpan)' : 'Tampal bot token'}" />
-          </div>
-          <div class="field">
-            <label for="tg-chat">Chat ID</label>
-            <input id="tg-chat" type="text" class="inp num" autocomplete="off" value="${esc(t.chat_id || '')}" placeholder="cth: -1001234567890" />
-          </div>
-          <div class="btn-row">
-            <button id="tg-simpan" class="btn primary" type="button">Simpan Tetapan</button>
-            <button id="tg-uji" class="btn ghost" type="button">Uji Telegram</button>
-          </div>
-          <div id="tg-uji-hasil" class="sync-hasil" hidden></div>
-        </div>
+        <p class="hint">Konfigurasi Telegram (Bot Token &amp; Chat ID) diurus melalui fail <code>.env</code> pelayan. Tetapan automasi &amp; laporan masih boleh dikawal dari sini.</p>
       </div>
 
       <div class="block">
@@ -615,43 +597,10 @@ function kadLogTg(l) {
 }
 
 function bindTelegram() {
-  $('#tg-simpan').addEventListener('click', simpanTelegram);
-  $('#tg-uji').addEventListener('click', ujiTelegram);
   $('#tg-daily').addEventListener('click', () => hantarHarian(false));
   $('#tg-auto-simpan').addEventListener('click', simpanAutomasi);
   $('#tg-weekly-now').addEventListener('click', hantarMingguan);
   $('#tg-monthly-now').addEventListener('click', hantarBulanan);
-}
-
-async function simpanTelegram() {
-  const tok = $('#tg-token').value.trim();
-  const body = { chat_id: $('#tg-chat').value.trim() };
-  if (tok) body.bot_token = tok;
-  const btn = $('#tg-simpan'); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menyimpan…';
-  try {
-    await fetchJSON('/api/superadmin/telegram/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    toast('Tetapan Telegram disimpan.', 'ok');
-    loadTelegram();
-  } catch (err) { toast(err.message, 'bad'); btn.disabled = false; btn.textContent = lbl; }
-}
-
-async function ujiTelegram() {
-  const tok = $('#tg-token').value.trim(), chat = $('#tg-chat').value.trim();
-  const box = $('#tg-uji-hasil'); box.hidden = true;
-  const btn = $('#tg-uji'); btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menguji…';
-  try {
-    if (tok || chat) {
-      const body = {}; if (tok) body.bot_token = tok; if (chat) body.chat_id = chat;
-      await fetchJSON('/api/superadmin/telegram/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    }
-    const d = await fetchJSON('/api/superadmin/telegram/test', { method: 'POST' });
-    box.className = 'sync-hasil ok'; box.hidden = false;
-    box.innerHTML = `Sambungan OK — bot @${esc(d.bot.username)}.${d.mesej_dihantar ? ' Mesej ujian dihantar.' : ''}${d.amaran ? ' (' + esc(d.amaran) + ')' : ''}`;
-    toast('Uji Telegram berjaya.', 'ok');
-    if (tok) loadTelegram();
-  } catch (err) {
-    box.className = 'sync-hasil err'; box.hidden = false; box.innerHTML = `Gagal: ${esc(err.message)}`;
-  } finally { btn.disabled = false; btn.textContent = lbl; }
 }
 
 async function hantarHarian(force) {
