@@ -3,6 +3,7 @@ import { buatApp } from './app.js';
 import { runMigrations } from './db/migrate.js';
 import { runSeed } from './db/seed.js';
 import { pool } from './db/pool.js';
+import { startTelegramScheduler } from './services/telegramScheduler.js';
 
 async function main() {
   // K-3: fail-closed jika SESSION_SECRET / kata laluan seed lemah dalam produksi.
@@ -24,6 +25,13 @@ async function main() {
     console.log(`[app] ✅ Server berjalan di ${HOST}:${config.port} (env: ${config.env})`);
     console.log(`[app] Health check (dalam container): http://localhost:${config.port}/api/health`);
   });
+
+  // T-2: mulakan penjadual automasi Telegram selepas server mendengar.
+  //   • Idempoten (guard `started`) — selamat walaupun dipanggil berulang.
+  //   • Tidak crash jika kredential Telegram tiada: tick() pulang senyap bila
+  //     token/chat kosong; tidak menghantar apa-apa semasa startup.
+  //   • Boleh dimatikan sepenuhnya via env TELEGRAM_SCHEDULER=off.
+  startTelegramScheduler();
 
   // Penutupan kemas
   const shutdown = (signal) => {

@@ -80,13 +80,17 @@ export async function tick(injectedNow) {
 }
 
 export function startTelegramScheduler() {
-  if (started || process.env.TELEGRAM_SCHEDULER === 'off') return;
+  if (started) return;                                  // sudah dimulakan — idempoten
+  if (process.env.TELEGRAM_SCHEDULER === 'off') {
+    console.log('[telegram] Penjadual automasi DIMATIKAN (TELEGRAM_SCHEDULER=off).');
+    return;                                             // dimatikan eksplisit via env
+  }
   started = true;
   const iv = setInterval(() => { tick().catch(() => {}); }, 60 * 1000);
   if (iv && typeof iv.unref === 'function') iv.unref();
   const t0 = setTimeout(() => { tick().catch(() => {}); }, 8000);
   if (t0 && typeof t0.unref === 'function') t0.unref();
-  console.log('[telegram] Penjadual automasi (Fasa 11B) dimulakan — semakan setiap 60s.');
+  console.log('[telegram] ✅ Penjadual automasi (Fasa 11B) dimulakan — semakan setiap 60s.');
 }
 
 export function schedulerStarted() { return started; }
