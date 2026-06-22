@@ -87,25 +87,38 @@ async function loadSistem() {
     box.innerHTML = cards
       .map((c) => `<div class="stat ${c.c}"><b class="num">${c.v == null ? '—' : c.v}</b><span>${esc(c.l)}</span></div>`).join('');
 
+    // ── Kad Telegram: status sebenar dari API (status_telegram sentiasa ada). ──
+    //   scheduler aktif  → 🟢 Aktif
+    //   token tiada/dsb  → 🟡 terkonfigurasi separa / 🔴 belum lengkap
+    const tgRaw = String(s.status_telegram || '');
+    const tgAktif = /aktif/i.test(tgRaw) && !/tidak aktif/i.test(tgRaw);
+    const tgBadge = tgAktif ? '<span class="badge-status on">🟢 Aktif</span>' : '<span class="badge-status warn">🟡 Tersekat</span>';
+
+    // ── Kad Google Sheet: status sebenar dari API. ──
+    //   status_google_sheet_sync = "Sync terakhir: berjaya · <masa>" | "Sedia · belum pernah disync"
+    const gsRaw = String(s.status_google_sheet_sync || '');
+    const gsSudahSync = /sync terakhir/i.test(gsRaw);
+
+    // Kad Telegram sahaja di #sa-integrasi (kad Google Sheet ada di blok di bawah, dengan butang Sync).
     integ.innerHTML = `
       <div class="card">
         <div class="row-card">
           <div class="row-main">
             <div class="row-title">Telegram</div>
-            <div class="row-sub">${esc(s.status_telegram)}</div>
+            <div class="row-sub">${esc(tgRaw)}</div>
           </div>
-          <span class="badge-status off">Belum sedia</span>
-        </div>
-      </div>
-      <div class="card">
-        <div class="row-card">
-          <div class="row-main">
-            <div class="row-title">Google Sheet Sync</div>
-            <div class="row-sub">${esc(s.status_google_sheet_sync)}</div>
-          </div>
-          <span class="badge-status off">Belum sedia</span>
+          ${tgBadge}
         </div>
       </div>`;
+
+    // ── Kad Google Sheet (di blok bawah, berkaitan butang Sync) ──
+    const gsSubEl = $('#gsheet-status-sub');
+    const gsBadgeEl = $('#gsheet-status-badge');
+    if (gsSubEl) gsSubEl.textContent = gsRaw;
+    if (gsBadgeEl) {
+      gsBadgeEl.className = 'badge-status ' + (gsSudahSync ? 'on' : 'warn');
+      gsBadgeEl.textContent = gsSudahSync ? '🟢 Bersambung' : '🟡 Belum disync';
+    }
   } catch (err) {
     box.innerHTML = `<div class="err">Gagal memuatkan: ${esc(err.message)}</div>`;
   }

@@ -39,18 +39,22 @@
       <div class="block">
         <div class="block-head"><h2>Integrasi</h2></div>
         <div id="sa-integrasi" class="list"></div>
-      </div>
-
-      <div class="block">
-        <div class="block-head"><h2>Google Sheet Sync</h2></div>
+        <!-- Kad Google Sheet + butang Sync (status & tindakan dalam satu tempat) -->
         <div class="card form-card">
+          <div class="row-card" id="gsheet-status-row">
+            <div class="row-main">
+              <div class="row-title">Google Sheet</div>
+              <div class="row-sub" id="gsheet-status-sub">Memuatkan status…</div>
+            </div>
+            <span class="badge-status off" id="gsheet-status-badge">—</span>
+          </div>
           <p class="field-note">Sync data master (pelajar, guru kelas, pembantu) &amp; data kehadiran lama GAS daripada kedua-dua Google Sheet. Menggunakan enjin sync sedia ada. Hanya Super Admin.</p>
           <button id="btn-sync" class="btn primary" type="button">Sync Google Sheet</button>
           <div id="sync-hasil" class="sync-hasil" hidden></div>
         </div>
       </div>
 
-      <p class="hint">Status integrasi bersifat info semasa. Butiran penuh akan dibina pada fasa berikut.</p>
+      <p class="hint">Status integrasi bersifat info semasa. Butiran penuh Telegram ada di tab Telegram.</p>
     </section>
 
     <!-- ───── 2) PENGURUSAN AKAUN ───── -->
