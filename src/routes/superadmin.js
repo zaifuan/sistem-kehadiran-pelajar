@@ -10,7 +10,7 @@ import {
   resetAttendanceClass, resetAttendanceDay,
   systemSummary, listActiveClassKod, runSheetSync,
   tgGetSettings, tgStatus, tgRecentLogs, tgSaveSettings, tgTest, tgSendDaily,
-  tgSendWeekly, tgSendMonthly,
+  tgSendWeekly, tgSendMonthly, tgSendFollowup,
 } from '../services/superadminService.js';
 
 export const superadminRouter = Router();
@@ -199,6 +199,17 @@ superadminRouter.post('/telegram/weekly', async (req, res) => {
 superadminRouter.post('/telegram/monthly', async (req, res) => {
   try {
     res.json(await tgSendMonthly(actorId(req)));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
+  }
+});
+
+// POST /api/superadmin/telegram/followup  — hantar "Peringatan Kelas Belum Isi" (manual)
+//   Bukan ralat jika tiada kelas belum (balas dihantar:false + mesej info).
+//   Tidak ganggu automasi scheduler / ledger dedup.
+superadminRouter.post('/telegram/followup', async (req, res) => {
+  try {
+    res.json(await tgSendFollowup(actorId(req)));
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, ralat: String(err && err.message ? err.message : err) });
   }

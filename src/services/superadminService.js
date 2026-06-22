@@ -546,3 +546,13 @@ export async function tgSendMonthly(actorId) {
   await audit(actorId, 'TELEGRAM_BULANAN', 'Snapshot bulanan dihantar (manual)');
   return r;
 }
+
+// Peringatan "Kelas Belum Isi" manual (butang). Audit sahaja jika berjaya dihantar;
+// jika tiada kelas belum, balas dihantar:false (bukan ralat) — jangan catat audit hantar.
+export async function tgSendFollowup(actorId) {
+  const r = await TG.sendFollowupManual();
+  if (r.dihantar) {
+    await audit(actorId, 'TELEGRAM_SUSULAN', `Peringatan belum isi dihantar (manual) — ${r.bil_belum} kelas`);
+  }
+  return r;
+}

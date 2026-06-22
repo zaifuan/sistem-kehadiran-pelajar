@@ -364,3 +364,39 @@ export async function sendMonthlyManual() {
   await logSend('bulanan', null, 'dihantar', `Snapshot bulanan (manual) — ${d.month ? d.month.label : ''} ${fmtPct(d.purata)}%`);
   return { ok: true, dihantar: true, message_id: res.message_id, mesej: 'Snapshot bulanan dihantar ke Telegram.' };
 }
+
+// ── Penghantaran manual "Peringatan Kelas Belum Isi" (butang; tiada dedup) ──
+//   - Semak kelas belum isi hari ini (missingClasses()).
+//   - Ada belum    → hantar Telegram buildFollowup (senarai kelas + guru/pembantu).
+//   - Semua sudah  → TIDAK hantar Telegram; pulang dihantar:false + mesej info.
+//   - Manual: tiada semakan cuti/Sabtu (selaras corak manual weekly/monthly yang
+//     tidak disekat weekend/cuti). Admin yang klik tentukan bila nak hantar.
+//   - Manual: tiada dedup (tidak ganggu ledger automasi telegram_job_logs).
+export async function sendFollowupManual() {
+  const n = nowKL();
+  const miss = await missingClasses();
+  const belum = (miss && miss.kelas) || [];
+  if (!belum.length) {
+    return {
+      ok: true,
+      dihantar: false,
+      tiada_belum: true,
+      bil_belum: 0,
+      mesej: 'Semua kelas sudah mengisi kehadiran. Tiada peringatan diperlukan.',
+    };
+  }
+  const text = buildFollowup(n.hhmm, belum);
+  let res;
+  try { res = await sendTelegram(text); }
+  catch (err) { await logSend('susulan', n.iso, 'gagal', `Peringatan belum isi (manual) — ${err && err.message ? err.message : err}`); throw err; }
+  await logSend('susulan', n.iso, 'dihantar', `Peringatan belum isi (manual) — ${belum.length} kelas (jam ${n.hhmm})`);
+  return {
+    ok: true,
+    dihantar: true,
+    tiada_belum: false,
+    bil_belum: belum.length,
+    kelas_belum: belum.map((k) => k.nama || k.kod),
+    message_id: res.message_id,
+    mesej: `Peringatan dihantar (${belum.length} kelas belum isi).`,
+  };
+}

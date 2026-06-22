@@ -547,6 +547,8 @@ async function loadTelegram() {
             <div class="field"><label for="au-f-end">Masa Tamat</label><input id="au-f-end" type="time" class="inp num" value="${esc(t.followup_end_time)}" /></div>
           </div>
           <div class="field"><label for="au-f-iv">Kekerapan</label><select id="au-f-iv" class="inp">${[30, 60, 120].map((v) => opt(v, 'Setiap ' + v + ' minit', t.followup_interval_minutes)).join('')}</select></div>
+          <button id="tg-followup-now" class="btn ghost" type="button">Hantar Peringatan Sekarang</button>
+          <div id="tg-followup-hasil" class="sync-hasil" hidden></div>
         </div>
 
         <div class="card form-card">
@@ -601,6 +603,7 @@ function bindTelegram() {
   $('#tg-auto-simpan').addEventListener('click', simpanAutomasi);
   $('#tg-weekly-now').addEventListener('click', hantarMingguan);
   $('#tg-monthly-now').addEventListener('click', hantarBulanan);
+  $('#tg-followup-now').addEventListener('click', hantarPeringatan);
 }
 
 async function hantarHarian(force) {
@@ -660,3 +663,30 @@ async function hantarSnapshot(jenis, urlSuffix, boxSel, btnSel) {
 }
 function hantarMingguan() { return hantarSnapshot('mingguan', 'weekly', '#tg-weekly-hasil', '#tg-weekly-now'); }
 function hantarBulanan() { return hantarSnapshot('bulanan', 'monthly', '#tg-monthly-hasil', '#tg-monthly-now'); }
+
+// ── Peringatan "Kelas Belum Isi" (manual) ──
+//   Tangani 3 keadaan respons endpoint /telegram/followup:
+//     dihantar:true         → mesej hijau (ada kelas belum, mesej dihantar)
+//     tiada_belum:true      → mesej makluman (semua sudah isi — TIDAK dihantar)
+//     ralat (catch)         → mesej merah (gagal hantar)
+async function hantarPeringatan() {
+  const box = $('#tg-followup-hasil'); const btn = $('#tg-followup-now');
+  btn.disabled = true; const lbl = btn.textContent; btn.textContent = 'Menghantar…';
+  try {
+    const d = await fetchJSON('/api/superadmin/telegram/followup', { method: 'POST' });
+    box.hidden = false;
+    if (d.dihantar) {
+      // Ada kelas belum isi → mesej dihantar (hijau).
+      box.className = 'sync-hasil ok';
+      box.innerHTML = esc(d.mesej);
+      toast('Peringatan dihantar.', 'ok');
+      loadTelegram();
+    } else {
+      // Semua kelas sudah isi → tidak hantar (makluman, bukan ralat).
+      box.className = 'sync-hasil warn';
+      box.innerHTML = esc(d.mesej || 'Semua kelas sudah mengisi kehadiran.');
+    }
+  } catch (err) {
+    box.className = 'sync-hasil err'; box.hidden = false; box.innerHTML = `Gagal: ${esc(err.message)}`;
+  } finally { btn.disabled = false; btn.textContent = lbl; }
+}
