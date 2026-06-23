@@ -160,10 +160,12 @@ async function importSheet1(client, tabsPelajar) {
       const cNama = idx['NAMA KELAS'];
       const cGuru = idx['GURU KELAS'];
       const cPmb = idx['PEMBANTU GURU KELAS'];
+      let dibaca = 0, dimasuk = 0, dikemas = 0;
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i] || [];
         const kod = cKod != null ? normKod(s(r[cKod])) : '';
         if (!kod) continue;
+        dibaca++;
         const namaKelas = cNama != null ? s(r[cNama]) : '';
         const guru = cGuru != null ? s(r[cGuru]) : '';
         const pembantu = cPmb != null ? s(r[cPmb]) : '';
@@ -175,26 +177,39 @@ async function importSheet1(client, tabsPelajar) {
              VALUES ($1,$2,$3,$4,$5,'aktif')`,
             [kod, namaKelas || kod, guru || null, pembantu || null, deriveTingkatan(kod)]
           );
+          dimasuk++;
         } else {
-          const existingGuru = s(ex.rows[0].guru_kelas);
-          if (existingGuru && guru && existingGuru.toUpperCase() !== guru.toUpperCase()) {
-            // KONFLIK: Sheet#2 (master) vs Sheet#1 — log warning, JANGAN timpa.
+          // FIX SENARAI KELAS: Sheet#1 (tab SENARAI KELAS) ialah sumber kebenaran untuk
+          // GURU KELAS & PEMBANTU GURU KELAS. Nilai BUKAN-kosong dari sheet MENIMPA DB
+          // (tidak lagi skip kerana rekod wujud; tidak lagi kekalkan guru lama).
+          // Sel KOSONG kekalkan nilai sedia ada supaya tiada padam tak sengaja.
+          const lama = s(ex.rows[0].guru_kelas);
+          await client.query(
+            `UPDATE classes SET
+               guru_kelas     = COALESCE(NULLIF($2,''), guru_kelas),
+               pembantu_kelas = COALESCE(NULLIF($3,''), pembantu_kelas)
+             WHERE kod=$1`,
+            [kod, guru, pembantu]
+          );
+          dikemas++;
+          if (guru && lama && lama.toUpperCase() !== guru.toUpperCase()) {
             await logSync(client, {
-              jenis: 'SHEET1:KONFLIK_GURU',
-              status: 'warning',
-              mesej: `Kelas ${kod}: guru Sheet#2='${existingGuru}' vs Sheet#1='${guru}'. TIDAK ditimpa (Sheet#2 master).`,
+              jenis: 'SHEET1:GURU_DIKEMASKINI',
+              status: 'berjaya',
+              mesej: `Kelas ${kod}: guru '${lama}' -> '${guru}' (ikut SENARAI KELAS).`,
             });
-            await client.query('UPDATE classes SET pembantu_kelas=$2 WHERE kod=$1', [kod, pembantu || null]);
-          } else {
-            // Tiada konflik / guru Sheet#2 kosong → isi pembantu + isi guru jika kosong.
-            await client.query(
-              `UPDATE classes SET pembantu_kelas=$2, guru_kelas=COALESCE(NULLIF(guru_kelas,''), $3) WHERE kod=$1`,
-              [kod, pembantu || null, guru || null]
-            );
           }
         }
         processed++;
       }
+      // FIX: log ringkas SENARAI KELAS — dibaca / insert / update.
+      console.log(`[SYNC] SENARAI KELAS (${tab}): ${dibaca} dibaca, ${dimasuk} insert, ${dikemas} update.`);
+      await logSync(client, {
+        jenis: 'SHEET1:SENARAI_KELAS',
+        status: 'berjaya',
+        bil: dibaca,
+        mesej: `SENARAI KELAS (${tab}): ${dibaca} dibaca, ${dimasuk} insert, ${dikemas} update.`,
+      });
     } else {
       // Tab lain (cth senarai pelajar Sheet#1) — simpan raw, jangan paksa map.
       processed += await upsertSheetRaw(client, config.sheets.masterPelajarId, 'SHEET1', tab, rows);
