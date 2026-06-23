@@ -122,6 +122,25 @@ function showScreen(name) {
   window.scrollTo(0, 0);
 }
 
+// Bina semula grid kelas dari state.classesByKod (DOM sahaja; tiada anjakan scroll).
+function renderGridKelas() {
+  const box = $('#grid-kelas');
+  if (!box) return;
+  box.innerHTML = KELAS_GRID.flat().map((kod) => {
+    const k = state.classesByKod[kod];
+    const bil = k ? k.pelajar_aktif : 0;
+    const selesai = !!(k && k.status_hari_ini === 'selesai');
+    const isStam = kod.indexOf('STAM') === 0;
+    const stateCls = selesai ? 'is-selesai' : 'is-belum';
+    const label = selesai ? 'Selesai' : 'Belum Isi';
+    return `<button class="kelas-btn ${stateCls}${isStam ? ' stam' : ''}" type="button" data-kod="${esc(kod)}">
+        <span class="kod">${esc(kod)}</span>
+        <span class="bil num">${bil} pelajar</span>
+        <span class="kstatus">${label}</span>
+      </button>`;
+  }).join('');
+}
+
 // ── Skrin 1: grid kelas (dengan status isi hari ini) ──
 async function loadGridKelas() {
   const box = $('#grid-kelas');
@@ -129,21 +148,26 @@ async function loadGridKelas() {
     const d = await fetchJSON('/api/guru/classes-status');
     state.classesByKod = {};
     d.kelas.forEach((k) => { state.classesByKod[k.kod] = k; });
-    box.innerHTML = KELAS_GRID.flat().map((kod) => {
-      const k = state.classesByKod[kod];
-      const bil = k ? k.pelajar_aktif : 0;
-      const selesai = !!(k && k.status_hari_ini === 'selesai');
-      const isStam = kod.indexOf('STAM') === 0;
-      const stateCls = selesai ? 'is-selesai' : 'is-belum';
-      const label = selesai ? 'Selesai' : 'Belum Isi';
-      return `<button class="kelas-btn ${stateCls}${isStam ? ' stam' : ''}" type="button" data-kod="${esc(kod)}">
-        <span class="kod">${esc(kod)}</span>
-        <span class="bil num">${bil} pelajar</span>
-        <span class="kstatus">${label}</span>
-      </button>`;
-    }).join('');
+    renderGridKelas();
   } catch (e) {
     box.innerHTML = `<div class="err">Gagal memuatkan kelas.<br><small>${esc(e.message)}</small></div>`;
+  }
+}
+
+// Versi SENYAP untuk auto-refresh: guna semula endpoint sedia ada /api/guru/classes-status.
+// Gagal (termasuk 401/rangkaian) → DIAM: kekalkan grid sedia ada, JANGAN log keluar,
+// JANGAN popup; cuba lagi kitaran seterusnya. Kemas kini DOM sahaja (scroll kekal).
+async function refreshGridKelasSenyap() {
+  try {
+    const res = await fetch('/api/guru/classes-status', { credentials: 'include' });
+    if (!res.ok) return;
+    const d = await res.json().catch(() => null);
+    if (!d || d.ok === false || !Array.isArray(d.kelas)) return;
+    state.classesByKod = {};
+    d.kelas.forEach((k) => { state.classesByKod[k.kod] = k; });
+    renderGridKelas();
+  } catch (e) {
+    /* rangkaian gagal → diam; cuba lagi kitaran seterusnya */
   }
 }
 
@@ -392,3 +416,16 @@ $('#btn-back').addEventListener('click', () => {
 tickClock();
 setInterval(tickClock, 1000);
 loadGridKelas();
+
+// ── Auto-refresh senarai kelas: setiap 60s, HANYA pada skrin 'kelas', satu interval sahaja ──
+const AUTO_REFRESH_MS = 60000;
+let autoRefreshTimer = null;
+function mulaAutoRefresh() {
+  if (autoRefreshTimer !== null) return;            // perlindungan: hanya SATU interval aktif
+  autoRefreshTimer = setInterval(() => {
+    if (state.screen !== 'kelas') return;           // berhenti semasa isi/sahkan (jangan ganggu)
+    if (document.hidden) return;                    // jangan segarkan tab tersembunyi
+    refreshGridKelasSenyap();                       // DOM sahaja; gagal → diam
+  }, AUTO_REFRESH_MS);
+}
+mulaAutoRefresh();
